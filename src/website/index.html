@@ -1,0 +1,705 @@
+<!DOCTYPE html>
+<html lang="it">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Infinite Dante</title>
+    <meta name="description" content="AI-powered infinite generation of Dante Alighieri's Divine Comedy style text.">
+
+    <!-- ONNX Runtime Web -->
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+
+    <style>
+        /* ================================================================
+           CSS VARIABLES
+           ================================================================ */
+        :root {
+            --bg: #0d0d0d;
+            --bg-card: #111111;
+            --bg-controls: #0a0a0a;
+
+            --text: #e8e0d0;
+            --text-dim: #8a8070;
+            --text-muted: #4a4540;
+
+            --accent: #d4a056;
+            --accent-dim: rgba(212, 160, 86, 0.15);
+            --accent-glow: rgba(212, 160, 86, 0.4);
+
+            --border: #2a2520;
+            --border-light: #3a3530;
+
+            --font-serif: 'Cormorant Garamond', 'Georgia', serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            height: 100%;
+            overflow: hidden;
+        }
+
+        body {
+            font-family: var(--font-serif);
+            background: var(--bg);
+            color: var(--text);
+        }
+
+        /* ================================================================
+           LAYOUT - Desktop vs Mobile
+           ================================================================ */
+        .app {
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Desktop: centered card layout */
+        @media (min-width: 768px) {
+            body {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 40px;
+                background:
+                    radial-gradient(ellipse at center, #1a1510 0%, #0d0d0d 70%);
+            }
+
+            .app {
+                max-width: 800px;
+                width: 100%;
+                height: auto;
+                max-height: calc(100vh - 80px);
+                background: var(--bg-card);
+                border: 1px solid var(--border);
+                border-radius: 8px;
+                box-shadow:
+                    0 0 0 1px var(--border-light),
+                    0 20px 60px rgba(0, 0, 0, 0.5);
+                overflow: hidden;
+            }
+        }
+
+        /* ================================================================
+           HEADER
+           ================================================================ */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            flex-shrink: 0;
+            background: var(--bg-card);
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .title {
+            font-size: 1.1rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            color: var(--accent);
+            text-transform: uppercase;
+        }
+
+        .header-links {
+            display: flex;
+            gap: 12px;
+        }
+
+        .header-link {
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            letter-spacing: 0.05em;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .header-link:hover {
+            color: var(--accent);
+        }
+
+        .status {
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            letter-spacing: 0.1em;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: var(--text-muted);
+            transition: all 0.2s;
+        }
+
+        .status.active .status-dot {
+            background: var(--accent);
+            box-shadow: 0 0 8px var(--accent-glow);
+        }
+
+        .status.loading .status-dot {
+            animation: pulse 1s ease-in-out infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.3;
+            }
+        }
+
+        /* ================================================================
+           MAIN TEXT AREA
+           ================================================================ */
+        .main {
+            flex: 1;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            background: var(--bg);
+        }
+
+        .text-scroll {
+            flex: 1;
+            overflow-y: auto;
+            overflow-x: hidden;
+            padding: 32px 24px;
+
+            scrollbar-width: thin;
+            scrollbar-color: var(--border) transparent;
+        }
+
+        .text-scroll::-webkit-scrollbar {
+            width: 6px;
+        }
+
+        .text-scroll::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 3px;
+        }
+
+        .text-content {
+            max-width: 580px;
+            margin: 0 auto;
+            font-size: 1.25rem;
+            line-height: 2;
+            font-weight: 400;
+        }
+
+        #text-output {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            outline: none;
+        }
+
+        #text-output.editable {
+            background: var(--accent-dim);
+            padding: 16px;
+            margin: -16px;
+            border-left: 2px solid var(--accent);
+        }
+
+        /* Cursor */
+        #cursor {
+            display: inline-block;
+            width: 2px;
+            height: 1.1em;
+            background: var(--accent);
+            margin-left: 2px;
+            vertical-align: text-bottom;
+            animation: blink 1s ease-in-out infinite;
+        }
+
+        @keyframes blink {
+
+            0%,
+            45% {
+                opacity: 1;
+            }
+
+            50%,
+            95% {
+                opacity: 0;
+            }
+
+            100% {
+                opacity: 1;
+            }
+        }
+
+        /* Canto separators */
+        .canto-separator {
+            text-align: center;
+            margin: 40px 0;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            font-weight: 500;
+            letter-spacing: 0.25em;
+            user-select: none;
+        }
+
+        .canto-separator::before,
+        .canto-separator::after {
+            content: '· · ·';
+            margin: 0 20px;
+            color: var(--border-light);
+        }
+
+        /* Edit indicator */
+        .edit-indicator {
+            position: fixed;
+            top: 80px;
+            left: 50%;
+            transform: translateX(-50%) translateY(-10px);
+            padding: 8px 16px;
+            background: var(--accent);
+            color: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            border-radius: 4px;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            z-index: 100;
+        }
+
+        .edit-indicator.visible {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(-50%) translateY(0);
+        }
+
+        /* ================================================================
+           CONTROLS
+           ================================================================ */
+        .controls {
+            flex-shrink: 0;
+            background: var(--bg-controls);
+            border-top: 1px solid var(--border);
+            padding: 16px 20px;
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+        }
+
+        .params-toggle {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 14px;
+        }
+
+        .params-toggle-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            letter-spacing: 0.1em;
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .params-toggle-btn:hover {
+            border-color: var(--text-dim);
+            color: var(--text-dim);
+        }
+
+        .params-toggle-btn.active {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .params-grid {
+            display: none;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+            margin-bottom: 16px;
+            padding: 16px;
+            background: var(--bg);
+            border-radius: 6px;
+            border: 1px solid var(--border);
+        }
+
+        .params-grid.visible {
+            display: grid;
+        }
+
+        .param {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .param-header {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .param-value {
+            color: var(--accent);
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 100%;
+            height: 3px;
+            background: var(--border);
+            border-radius: 2px;
+            cursor: pointer;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            cursor: pointer;
+            transition: transform 0.15s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:hover {
+            transform: scale(1.15);
+        }
+
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: var(--accent);
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+        }
+
+        /* Action buttons */
+        .actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            flex: 1;
+            padding: 14px 20px;
+            font-family: var(--font-mono);
+            font-size: 0.7rem;
+            font-weight: 500;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            background: transparent;
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .btn:hover:not(:disabled) {
+            border-color: var(--text-dim);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .btn:active:not(:disabled) {
+            transform: scale(0.98);
+        }
+
+        .btn:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: var(--bg);
+            border-color: var(--accent);
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #e0b060;
+            border-color: #e0b060;
+        }
+
+        /* Footer credits */
+        .footer-credits {
+            display: none;
+            justify-content: center;
+            gap: 16px;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer-link {
+            font-family: var(--font-mono);
+            font-size: 0.55rem;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.2s;
+        }
+
+        .footer-link:hover {
+            color: var(--accent);
+        }
+
+        /* ================================================================
+           RESPONSIVE
+           ================================================================ */
+        @media (min-width: 768px) {
+            .header {
+                padding: 20px 28px;
+            }
+
+            .title {
+                font-size: 1.2rem;
+            }
+
+            .text-scroll {
+                padding: 40px 32px;
+            }
+
+            .text-content {
+                font-size: 1.35rem;
+            }
+
+            .controls {
+                padding: 20px 28px;
+            }
+
+            .footer-credits {
+                display: flex;
+            }
+
+            .edit-indicator {
+                top: auto;
+                bottom: 180px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .text-content {
+                font-size: 1.4rem;
+                line-height: 2.1;
+            }
+        }
+
+        @media (max-width: 767px) {
+            .header-links {
+                display: none;
+            }
+
+            .header {
+                padding: 12px 16px;
+            }
+
+            .title {
+                font-size: 0.95rem;
+            }
+
+            .text-scroll {
+                padding: 20px 16px;
+            }
+
+            .text-content {
+                font-size: 1.05rem;
+                line-height: 1.85;
+            }
+
+            .controls {
+                padding: 12px 16px;
+            }
+
+            .params-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 12px;
+                padding: 12px;
+            }
+
+            .param:nth-child(5) {
+                grid-column: span 2;
+            }
+
+            .btn {
+                padding: 14px 12px;
+                font-size: 0.65rem;
+            }
+
+            .canto-separator {
+                font-size: 0.75rem;
+                margin: 28px 0;
+            }
+
+            .canto-separator::before,
+            .canto-separator::after {
+                margin: 0 12px;
+            }
+
+            /* Show credits in mobile footer */
+            .footer-credits {
+                display: flex;
+            }
+        }
+
+        /* Touch devices */
+        @media (hover: none) and (pointer: coarse) {
+            input[type="range"]::-webkit-slider-thumb {
+                width: 22px;
+                height: 22px;
+            }
+
+            .btn {
+                min-height: 48px;
+            }
+
+            .params-toggle-btn {
+                padding: 10px 18px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="app">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-left">
+                <h1 class="title">Infinite Dante</h1>
+                <nav class="header-links">
+                    <a href="https://github.com/meconii/InfiniteDante" target="_blank" class="header-link">GitHub</a>
+                    <a href="https://www.duccio.me" target="_blank" class="header-link">duccio.me</a>
+                </nav>
+            </div>
+            <div class="status" id="status-wrapper">
+                <span class="status-dot"></span>
+                <span id="status">loading</span>
+            </div>
+        </header>
+
+        <!-- Main text area -->
+        <main class="main">
+            <div class="text-scroll" id="text-container">
+                <div class="text-content">
+                    <span id="text-output"></span><span id="cursor"></span>
+                </div>
+            </div>
+        </main>
+
+        <!-- Edit indicator -->
+        <div class="edit-indicator" id="edit-indicator">✎ edit mode</div>
+
+        <!-- Controls -->
+        <footer class="controls">
+            <div class="params-toggle">
+                <button class="params-toggle-btn" id="params-toggle">parameters</button>
+            </div>
+
+            <div class="params-grid" id="params-grid">
+                <div class="param">
+                    <div class="param-header">
+                        <span>temp</span>
+                        <span class="param-value" id="temp-value">0.85</span>
+                    </div>
+                    <input type="range" id="temperature" min="0.3" max="1.5" step="0.05" value="0.85">
+                </div>
+
+                <div class="param">
+                    <div class="param-header">
+                        <span>top-k</span>
+                        <span class="param-value" id="top-k-value">40</span>
+                    </div>
+                    <input type="range" id="top-k" min="10" max="100" step="5" value="40">
+                </div>
+
+                <div class="param">
+                    <div class="param-header">
+                        <span>top-p</span>
+                        <span class="param-value" id="top-p-value">0.92</span>
+                    </div>
+                    <input type="range" id="top-p" min="0.5" max="1.0" step="0.02" value="0.92">
+                </div>
+
+                <div class="param">
+                    <div class="param-header">
+                        <span>rep-pen</span>
+                        <span class="param-value" id="rep-penalty-value">1.15</span>
+                    </div>
+                    <input type="range" id="rep-penalty" min="1.0" max="2.0" step="0.05" value="1.15">
+                </div>
+
+                <div class="param">
+                    <div class="param-header">
+                        <span>speed</span>
+                        <span class="param-value" id="speed-value">50ms</span>
+                    </div>
+                    <input type="range" id="speed" min="10" max="200" step="10" value="50">
+                </div>
+            </div>
+
+            <div class="actions">
+                <button class="btn btn-primary" id="start-btn" disabled>▶ start</button>
+                <button class="btn" id="stop-btn" disabled>■ stop</button>
+                <button class="btn" id="clear-btn">✕ clear</button>
+            </div>
+
+            <div class="footer-credits">
+                <a href="https://github.com/meconii/InfiniteDante" target="_blank" class="footer-link">GitHub</a>
+                <span class="footer-link" style="cursor: default;">·</span>
+                <a href="https://www.duccio.me" target="_blank" class="footer-link">duccio.me</a>
+            </div>
+        </footer>
+    </div>
+
+    <script src="script.js"></script>
+    <script>
+        // Parameters panel toggle
+        const paramsToggle = document.getElementById('params-toggle');
+        const paramsGrid = document.getElementById('params-grid');
+
+        paramsToggle.addEventListener('click', () => {
+            paramsToggle.classList.toggle('active');
+            paramsGrid.classList.toggle('visible');
+        });
+    </script>
+</body>
+
+</html>

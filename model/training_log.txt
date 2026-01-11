@@ -1,0 +1,45 @@
+Using device: cuda
+Loading tokenized datasets...
+Model parameters: 8,218,624
+
+>>> Stage: Pre-training (General Italian) (10000 iters, lr=0.0003)
+Step     0: train loss 6.4063, val loss 6.4021
+Step   500: train loss 3.7906, val loss 3.8707
+Step  1000: train loss 3.5611, val loss 3.6791
+Step  1500: train loss 3.1966, val loss 3.3663
+Step  2000: train loss 2.9750, val loss 3.1662
+Step  2500: train loss 2.8416, val loss 3.0597
+Step  3000: train loss 2.7363, val loss 2.9976
+Step  3500: train loss 2.6595, val loss 2.9436
+Step  4000: train loss 2.6041, val loss 2.8897
+Step  4500: train loss 2.5588, val loss 2.8629
+Step  5000: train loss 2.5028, val loss 2.8436
+Step  5500: train loss 2.4643, val loss 2.8257
+Step  6000: train loss 2.4202, val loss 2.7910
+Step  6500: train loss 2.4013, val loss 2.7969
+Step  7000: train loss 2.3696, val loss 2.7843
+Step  7500: train loss 2.3283, val loss 2.7743
+Step  8000: train loss 2.3068, val loss 2.7687
+Step  8500: train loss 2.2824, val loss 2.7336
+Step  9000: train loss 2.2689, val loss 2.7659
+Step  9500: train loss 2.2539, val loss 2.7416
+Step  9999: train loss 2.2275, val loss 2.7676
+
+>>> Stage: Fine-tuning (Dante) (5000 iters, lr=0.0001)
+Step     0: train loss 2.7750, val loss 2.8396
+Step   500: train loss 2.1496, val loss 2.6141
+Step  1000: train loss 2.0396, val loss 2.6380
+Step  1500: train loss 1.9386, val loss 2.6644
+Step  2000: train loss 1.8479, val loss 2.6995
+Step  2500: train loss 1.7705, val loss 2.7341
+Step  3000: train loss 1.6997, val loss 2.7653
+Step  3500: train loss 1.6140, val loss 2.8077
+Step  4000: train loss 1.5467, val loss 2.8275
+Step  4500: train loss 1.4802, val loss 2.8559
+Step  4999: train loss 1.4068, val loss 2.8945
+
+--- Final Sample Generation ---
+Nel mezzo del cammin di nostra vita significar la vertute, cioÞ che l'anima dal principio dimostra le cose nature native, per difesare della linea, che tanto Þ pi¨ virtuoso e pi¨ sperta, a certe parole non generalmente e diverse buona miglia. Onde, con ci
+
+Exporting to ONNX...
+Saved model.onnx
