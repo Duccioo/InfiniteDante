@@ -25,11 +25,12 @@ DROPOUT = 0.2
 # Two-stage Training Config
 PRETRAIN_ITERS = 10000 
 PRETRAIN_LR = 3e-4 # Slightly lower for deeper model
-FINETUNE_ITERS = 5000
-FINETUNE_LR = 1e-4
+FINETUNE_ITERS = 2000  # Reduced to prevent overfitting
+FINETUNE_LR = 5e-5     # Much lower LR for fine-tuning
 
 EVAL_INTERVAL = 500
-EARLY_STOPPING_PATIENCE = 5  # Stop if val loss doesn't improve for this many evals
+EARLY_STOPPING_PATIENCE_PRETRAIN = 5   # Stricter for pretraining
+EARLY_STOPPING_PATIENCE_FINETUNE = 10  # More lenient for finetuning
 DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 print(f"Using device: {DEVICE}")
@@ -210,9 +211,9 @@ class NanoGPT(nn.Module):
 model = NanoGPT(vocab_size).to(DEVICE)
 print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
-def train_stage(stage_name, train_data, val_data, iters, lr):
+def train_stage(stage_name, train_data, val_data, iters, lr, patience):
     """Train with early stopping and loss tracking."""
-    print(f"\n>>> Stage: {stage_name} ({iters} iters, lr={lr})")
+    print(f"\n>>> Stage: {stage_name} ({iters} iters, lr={lr}, patience={patience})")
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     
     train_losses = []
@@ -236,9 +237,9 @@ def train_stage(stage_name, train_data, val_data, iters, lr):
                 best_model_state = {k: v.clone() for k, v in model.state_dict().items()}
             else:
                 patience_counter += 1
-                print(f"  -> No improvement. Patience: {patience_counter}/{EARLY_STOPPING_PATIENCE}")
+                print(f"  -> No improvement. Patience: {patience_counter}/{patience}")
                 
-                if patience_counter >= EARLY_STOPPING_PATIENCE:
+                if patience_counter >= patience:
                     print(f"  -> Early stopping triggered at step {iter}!")
                     if best_model_state is not None:
                         model.load_state_dict(best_model_state)
@@ -255,11 +256,17 @@ def train_stage(stage_name, train_data, val_data, iters, lr):
 
 # Stage 1: Pre-training
 train_pre, val_pre = get_split_tensors(pretrain_data_raw)
-pretrain_train_losses, pretrain_val_losses = train_stage("Pre-training (General Italian)", train_pre, val_pre, PRETRAIN_ITERS, PRETRAIN_LR)
+pretrain_train_losses, pretrain_val_losses = train_stage(
+    "Pre-training (General Italian)", train_pre, val_pre, 
+    PRETRAIN_ITERS, PRETRAIN_LR, EARLY_STOPPING_PATIENCE_PRETRAIN
+)
 
 # Stage 2: Fine-tuning
 train_fine, val_fine = get_split_tensors(finetune_data_raw)
-finetune_train_losses, finetune_val_losses = train_stage("Fine-tuning (Dante)", train_fine, val_fine, FINETUNE_ITERS, FINETUNE_LR)
+finetune_train_losses, finetune_val_losses = train_stage(
+    "Fine-tuning (Dante)", train_fine, val_fine, 
+    FINETUNE_ITERS, FINETUNE_LR, EARLY_STOPPING_PATIENCE_FINETUNE
+)
 
 # ==============================================================================
 # Save Loss Plots

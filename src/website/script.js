@@ -77,18 +77,67 @@ function encode(str) {
 
 /**
  * Decode BPE token IDs back to a string.
+ * Handles incomplete UTF-8 sequences by buffering trailing bytes.
  */
+let pendingBytes = new Uint8Array(0); // Buffer for incomplete UTF-8 sequences
+
 function decode(tokens) {
-    const totalLength = tokens.reduce((acc, t) => acc + (bpe_vocab[t] ? bpe_vocab[t].length : 0), 0);
-    const result = new Uint8Array(totalLength);
-    let offset = 0;
+    // Calculate total length including pending bytes
+    const tokenLength = tokens.reduce((acc, t) => acc + (bpe_vocab[t] ? bpe_vocab[t].length : 0), 0);
+    const result = new Uint8Array(pendingBytes.length + tokenLength);
+
+    // Copy pending bytes first
+    result.set(pendingBytes, 0);
+    let offset = pendingBytes.length;
+
+    // Add new token bytes
     for (const t of tokens) {
         if (bpe_vocab[t]) {
             result.set(bpe_vocab[t], offset);
             offset += bpe_vocab[t].length;
         }
     }
-    return new TextDecoder().decode(result);
+
+    // Find the last complete UTF-8 character boundary
+    let validEnd = result.length;
+    for (let i = Math.max(0, result.length - 4); i < result.length; i++) {
+        const byte = result[i];
+        // Check if this is a UTF-8 start byte
+        if ((byte & 0x80) === 0) {
+            // ASCII - always complete
+            validEnd = i + 1;
+        } else if ((byte & 0xE0) === 0xC0) {
+            // 2-byte sequence start
+            if (i + 2 <= result.length) validEnd = i + 2;
+            else { validEnd = i; break; }
+        } else if ((byte & 0xF0) === 0xE0) {
+            // 3-byte sequence start
+            if (i + 3 <= result.length) validEnd = i + 3;
+            else { validEnd = i; break; }
+        } else if ((byte & 0xF8) === 0xF0) {
+            // 4-byte sequence start
+            if (i + 4 <= result.length) validEnd = i + 4;
+            else { validEnd = i; break; }
+        }
+    }
+
+    // Store incomplete bytes for next call
+    if (validEnd < result.length) {
+        pendingBytes = result.slice(validEnd);
+    } else {
+        pendingBytes = new Uint8Array(0);
+    }
+
+    // Decode only the complete portion
+    const completeBytes = result.slice(0, validEnd);
+    return new TextDecoder('utf-8', { fatal: false }).decode(completeBytes);
+}
+
+/**
+ * Reset pending bytes buffer (call when clearing text)
+ */
+function resetDecoder() {
+    pendingBytes = new Uint8Array(0);
 }
 
 // ============================================================================
@@ -387,6 +436,7 @@ function clearText() {
     textContainer.querySelectorAll('.canto-separator').forEach(el => el.remove());
     statusEl.textContent = 'CLEARED — PRESS START';
     disableEditing();
+    resetDecoder(); // Clear pending UTF-8 bytes
 }
 
 // ============================================================================
