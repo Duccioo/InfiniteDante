@@ -213,6 +213,36 @@ InfiniteDante/
 
 ---
 
+## 🌍 Deploy su GitHub Pages
+
+### 1. Push della Repository
+
+```bash
+git add .
+git commit -m "Deploy Infinite Dante"
+git push origin main
+```
+
+### 2. Abilita GitHub Pages
+
+1. Vai su **GitHub → Repository → Settings**
+2. Nel menu laterale clicca **Pages**
+3. Sotto **Source** seleziona:
+   - **Branch**: `main`
+   - **Folder**: `/ (root)`
+4. Clicca **Save**
+
+### 3. Accedi al Sito
+
+Dopo qualche minuto il sito sarà disponibile su:
+```
+https://TUO-USERNAME.github.io/InfiniteDante/
+```
+
+Il file `index.html` nella root redirige automaticamente a `src/website/`.
+
+---
+
 ## 🐛 Troubleshooting
 
 | Problema | Soluzione |
