@@ -1,6 +1,6 @@
 # 🔥 Infinite Dante
 
-Un micro-LLM (~8.2M parametri) addestrato su testi di Dante Alighieri e letteratura italiana medievale che gira **interamente nel browser** per generare testo infinito nello stile dantesco.
+A micro-LLM (~8.2M parameters) trained on Dante Alighieri's works and medieval Italian literature that runs **entirely in the browser** to generate infinite Dante-style text.
 
 ![ONNX Runtime](https://img.shields.io/badge/Runtime-ONNX%20Web-blue)
 ![PyTorch](https://img.shields.io/badge/Training-PyTorch-orange)
@@ -8,214 +8,214 @@ Un micro-LLM (~8.2M parametri) addestrato su testi di Dante Alighieri e letterat
 
 ---
 
-## 📖 Indice
+## 📖 Table of Contents
 
 - [Demo](#-demo)
 - [Quick Start](#-quick-start)
-- [Architettura](#️-architettura)
+- [Architecture](#️-architecture)
 - [Training](#-training)
-- [Struttura del Progetto](#-struttura-del-progetto)
-- [Dati di Training](#-dati-di-training)
+- [Project Structure](#-project-structure)
+- [Training Data](#-training-data)
 - [Troubleshooting](#-troubleshooting)
 
 ---
 
 ## 🌐 Demo
 
-Apri `src/website/index.html` con un server locale per vedere il generatore in azione con:
-- **Design minimalista medievale** con font serif Cormorant Garamond
-- **Controlli sempre visibili** in basso
-- **Parametri LLM regolabili**: Temperature, Top-K, Top-P, Repetition Penalty
-- **Modifica interattiva**: clicca sul testo quando in pausa per editarlo
+Open `src/website/index.html` with a local server to see the generator in action:
+- **Minimalist medieval design** with Cormorant Garamond serif font
+- **Always-visible controls** at the bottom
+- **Adjustable LLM parameters**: Temperature, Top-K, Top-P, Repetition Penalty
+- **Interactive editing**: click on text when paused to edit it
 
 ---
 
 ## 🚀 Quick Start
 
-### Prerequisiti
+### Prerequisites
 
 ```bash
 pip install torch numpy matplotlib
 ```
 
-### 1. Prepara i Dati
+### 1. Prepare the Data
 
 ```bash
-# I testi vanno in due cartelle:
-# - data/raw/pretraining/  → testi italiani generici
-# - data/raw/finetuning/   → testi con "spirito dantesco"
+# Text files go in two folders:
+# - data/raw/pretraining/  → general Italian texts
+# - data/raw/finetuning/   → texts with "Dantean spirit"
 
 cd src/training
 python prepare_data.py
 ```
 
-Questo crea:
-- `data/clean/pretrain.bin` e `finetune.bin` (dati tokenizzati)
-- `model/meta.json` (vocabolario BPE per il browser)
+This creates:
+- `data/clean/pretrain.bin` and `finetune.bin` (tokenized data)
+- `model/meta.json` (BPE vocabulary for browser)
 
-### 2. Addestra il Modello
+### 2. Train the Model
 
 ```bash
 cd src/training
 python train_and_export.py
 ```
 
-Il training include:
-- **Pre-training** su letteratura italiana generale (10k iterazioni)
-- **Fine-tuning** su testi danteschi (5k iterazioni)
-- **Early stopping** basato sulla validation loss
-- **Salvataggio automatico** di grafici e log nella cartella `model/`
+Training includes:
+- **Pre-training** on general Italian literature (10k iterations)
+- **Fine-tuning** on Dante's works (2k iterations)
+- **Early stopping** based on validation loss
+- **Automatic saving** of plots and logs to `model/` folder
 
-Output generati in `model/`:
-- `model.onnx` - Modello per inferenza browser
-- `meta.json` - Vocabolario BPE
-- `loss_plots.png` - Grafici loss
-- `loss_history.json` - Dati loss
+Generated outputs in `model/`:
+- `model.onnx` - Model for browser inference
+- `meta.json` - BPE vocabulary
+- `loss_plots.png` - Loss charts
+- `loss_history.json` - Loss data
 
-### 3. Avvia la Demo
+### 3. Run the Demo
 
 ```bash
-# Serve un server locale per CORS (dalla root del progetto)
+# Start a local server for CORS (from project root)
 python -m http.server 8000
 
-# Oppure con Node.js
+# Or with Node.js
 npx serve .
 ```
 
-Apri **http://localhost:8000/src/website/** nel browser.
+Open **http://localhost:8000** in your browser.
 
 ---
 
-## 🏗️ Architettura
+## 🏗️ Architecture
 
-### Modello: NanoGPT (~8.2M parametri)
+### Model: NanoGPT (~8.2M parameters)
 
-| Parametro | Valore |
-|-----------|--------|
+| Parameter | Value |
+|-----------|-------|
 | Embedding Dimension | 256 |
 | Attention Heads | 8 |
 | Transformer Layers | 10 |
 | Context Length | 256 |
-| Tokenizzazione | BPE (512 vocab) |
+| Tokenization | BPE (512 vocab) |
 
-### Tokenizzazione BPE
+### BPE Tokenization
 
-- Vocabolario di 512 token (256 byte + 256 merge)
-- Addestrato sul corpus combinato pretraining + finetuning
-- Encoding/decoding nel browser via `meta.json`
+- 512-token vocabulary (256 bytes + 256 merges)
+- Trained on combined pretraining + finetuning corpus
+- Browser encoding/decoding via `meta.json`
 
 ---
 
 ## 🎓 Training
 
-### Due Fasi
+### Two Phases
 
 1. **Pre-training** (General Italian)
    - Learning rate: 3e-4
-   - 10,000 iterazioni
-   - Dati: letteratura italiana medievale e classica
+   - 10,000 iterations
+   - Data: medieval and classical Italian literature
 
 2. **Fine-tuning** (Dante)
-   - Learning rate: 1e-4
-   - 5,000 iterazioni
-   - Dati: opere di Dante e testi con "spirito dantesco"
+   - Learning rate: 5e-5
+   - 2,000 iterations
+   - Data: Dante's works and texts with "Dantean spirit"
 
 ### Early Stopping
 
-- **Patience**: 5 valutazioni consecutive senza miglioramento
-- Salva automaticamente il miglior modello
-- Ripristina i pesi migliori a fine training
+- **Patience**: 5 evals for pretraining, 10 for finetuning
+- Automatically saves the best model
+- Restores best weights at training end
 
-### Visualizzazione Loss
+### Loss Visualization
 
-Dopo il training vengono generati in `model/`:
-- `loss_plots.png` - Grafici di train/val loss per entrambe le fasi
-- `loss_history.json` - Dati raw per analisi successive
-
----
-
-## 🎛️ Controlli UI
-
-| Controllo | Descrizione |
-|-----------|-------------|
-| **Temperature** | Creatività (0.3 = conservativo, 1.5 = creativo) |
-| **Top-K** | Considera solo i K token più probabili |
-| **Top-P** | Nucleus sampling (probabilità cumulativa) |
-| **Rep Penalty** | Penalizza ripetizioni (>1.0 = meno ripetizioni) |
-| **Speed** | Ritardo tra caratteri (ms) |
-| **Spazio** | Play/Pausa generazione |
-| **Escape** | Stop generazione |
-
-### Modifica Interattiva
-
-Quando in pausa, clicca sul testo per modificarlo. Il modello continuerà dalle tue modifiche.
+After training, generated in `model/`:
+- `loss_plots.png` - Train/val loss charts for both phases
+- `loss_history.json` - Raw data for further analysis
 
 ---
 
-## 📁 Struttura del Progetto
+## 🎛️ UI Controls
+
+| Control | Description |
+|---------|-------------|
+| **Temperature** | Creativity (0.3 = conservative, 1.5 = creative) |
+| **Top-K** | Consider only the K most likely tokens |
+| **Top-P** | Nucleus sampling (cumulative probability) |
+| **Rep Penalty** | Penalize repetitions (>1.0 = fewer repetitions) |
+| **Speed** | Delay between characters (ms) |
+| **Space** | Play/Pause generation |
+| **Escape** | Stop generation |
+
+### Interactive Editing
+
+When paused, click on the text to edit it. The model will continue from your modifications.
+
+---
+
+## 📁 Project Structure
 
 ```
 InfiniteDante/
 ├── data/
 │   ├── raw/
-│   │   ├── pretraining/         # Testi italiani generici (.txt)
-│   │   └── finetuning/          # Testi danteschi (.txt)
+│   │   ├── pretraining/         # General Italian texts (.txt)
+│   │   └── finetuning/          # Dante-style texts (.txt)
 │   └── clean/
-│       ├── pretrain.bin         # Token pretraining (generato)
-│       └── finetune.bin         # Token finetuning (generato)
+│       ├── pretrain.bin         # Pretraining tokens (generated)
+│       └── finetune.bin         # Finetuning tokens (generated)
 ├── model/
-│   ├── meta.json                # Vocabolario BPE (generato)
-│   ├── model.onnx               # Modello trainato (generato)
-│   ├── loss_plots.png           # Grafici loss (generato)
-│   └── loss_history.json        # Storia loss (generato)
+│   ├── meta.json                # BPE vocabulary (generated)
+│   ├── model.onnx               # Trained model (generated)
+│   ├── loss_plots.png           # Loss charts (generated)
+│   └── loss_history.json        # Loss history (generated)
 ├── src/
 │   ├── training/
-│   │   ├── prepare_data.py      # Preprocessing e BPE tokenizer
-│   │   └── train_and_export.py  # Training con early stopping + export ONNX
+│   │   ├── prepare_data.py      # Preprocessing & BPE tokenizer
+│   │   └── train_and_export.py  # Training with early stopping + ONNX export
 │   └── website/
-│       ├── index.html           # UI web (design medievale minimalista)
-│       └── script.js            # Inferenza browser + sampling avanzato
+│       ├── index.html           # Web UI (minimalist medieval design)
+│       └── script.js            # Browser inference + advanced sampling
 ├── LICENSE                      # CC BY-NC 4.0
 └── README.md
 ```
 
 ---
 
-## 📚 Dati di Training
+## 📚 Training Data
 
-### Finetuning (Spirito Dantesco)
+### Finetuning (Dantean Spirit)
 
-| Opera | Autore | Link |
-|-------|--------|------|
-| La Divina Commedia | Dante | [Gutenberg](https://www.gutenberg.org/cache/epub/8800/pg8800.txt) |
+| Work | Author | Link |
+|------|--------|------|
+| The Divine Comedy | Dante | [Gutenberg](https://www.gutenberg.org/cache/epub/8800/pg8800.txt) |
 | Convivio | Dante | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit001673) |
 | Rime | Dante | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000691) |
 | De Vulgari Eloquentia | Dante | [Archive.org](https://archive.org/stream/iltrattatodevulgarielomino/iltrattatodevulgarielomino_djvu.txt) |
 | Vita Nuova | Dante | [Archive.org](https://archive.org/stream/vitanuovadantealighieri/Vita%20Nuova%20-%20Dante%20Alighieri_djvu.txt) |
 | Epistole | Dante | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000312) |
 
-### Pretraining (Italiano Medievale/Classico)
+### Pretraining (Medieval/Classical Italian)
 
-| Opera | Autore | Link |
-|-------|--------|------|
-| Promessi Sposi | Manzoni | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000267) |
-| Il Principe | Machiavelli | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000214) |
+| Work | Author | Link |
+|------|--------|------|
+| The Betrothed | Manzoni | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000267) |
+| The Prince | Machiavelli | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000214) |
 | Rime | Cecco Angiolieri | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000728) |
-| Commedia delle Ninfe | Boccaccio | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000738) |
-| Chiose all'Inferno | Jacopo Alighieri | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000221) |
+| Comedy of the Nymphs | Boccaccio | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000738) |
+| Glosses on Inferno | Jacopo Alighieri | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000221) |
 | Amorosa Visione | Boccaccio | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000045) |
 | Teseida | Boccaccio | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000041) |
 | L'Acerba | Cecco d'Ascoli | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit001436) |
-| Poesie | Cino da Pistoia | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit001110) |
-| La Spagna | Anonimo | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000653) |
+| Poems | Cino da Pistoia | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit001110) |
+| La Spagna | Anonymous | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000653) |
 | Rime | Antonio Beccari | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit001342) |
-| Poesie | Antonio degli Agli | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000542) |
+| Poems | Antonio degli Agli | [Biblioteca Italiana](http://www.bibliotecaitaliana.it/testo/bibit000542) |
 
 ---
 
-## 🌍 Deploy su GitHub Pages
+## 🌍 Deploy to GitHub Pages
 
-### 1. Push della Repository
+### 1. Push the Repository
 
 ```bash
 git add .
@@ -223,45 +223,45 @@ git commit -m "Deploy Infinite Dante"
 git push origin main
 ```
 
-### 2. Abilita GitHub Pages
+### 2. Enable GitHub Pages
 
-1. Vai su **GitHub → Repository → Settings**
-2. Nel menu laterale clicca **Pages**
-3. Sotto **Source** seleziona:
+1. Go to **GitHub → Repository → Settings**
+2. Click **Pages** in the sidebar
+3. Under **Source** select:
    - **Branch**: `main`
    - **Folder**: `/ (root)`
-4. Clicca **Save**
+4. Click **Save**
 
-### 3. Accedi al Sito
+### 3. Access the Site
 
-Dopo qualche minuto il sito sarà disponibile su:
+After a few minutes, the site will be available at:
 ```
-https://TUO-USERNAME.github.io/InfiniteDante/
+https://YOUR-USERNAME.github.io/InfiniteDante/
 ```
 
-Il file `index.html` nella root redirige automaticamente a `src/website/`.
+The `index.html` in root automatically redirects to `src/website/`.
 
 ---
 
 ## 🐛 Troubleshooting
 
-| Problema | Soluzione |
-|----------|-----------|
-| Errore CORS | Usa un server locale (`python -m http.server`) |
-| "Failed to load meta.json" | Esegui prima `prepare_data.py` poi `train_and_export.py` |
-| Generazione lenta | Abbassa temperature, usa browser più veloce |
-| Testo ripetitivo | Aumenta Rep Penalty, abbassa temperature |
-| Early stopping troppo presto | Aumenta `EARLY_STOPPING_PATIENCE` in `train_and_export.py` |
-| Memoria GPU insufficiente | Riduci `BATCH_SIZE` o `N_EMBD` |
+| Problem | Solution |
+|---------|----------|
+| CORS error | Use a local server (`python -m http.server`) |
+| "Failed to load meta.json" | Run `prepare_data.py` first, then `train_and_export.py` |
+| Slow generation | Lower temperature, use a faster browser |
+| Repetitive text | Increase Rep Penalty, lower temperature |
+| Early stopping too soon | Increase `EARLY_STOPPING_PATIENCE` in `train_and_export.py` |
+| GPU out of memory | Reduce `BATCH_SIZE` or `N_EMBD` |
 
 ---
 
-## 📜 Licenza
+## 📜 License
 
-Progetto educativo. La Divina Commedia e gli altri testi medievali sono di pubblico dominio.
+Educational project. The Divine Comedy and other medieval texts are in the public domain.
 
-## 🙏 Riconoscimenti
+## 🙏 Acknowledgments
 
-- [nanoGPT di Andrej Karpathy](https://github.com/karpathy/nanoGPT) - Ispirazione architetturale
-- [ONNX Runtime Web](https://onnxruntime.ai/) - Inferenza nel browser
-- [Biblioteca Italiana](http://www.bibliotecaitaliana.it/) - Testi digitalizzati
+- [Andrej Karpathy's nanoGPT](https://github.com/karpathy/nanoGPT) - Architectural inspiration
+- [ONNX Runtime Web](https://onnxruntime.ai/) - Browser inference
+- [Biblioteca Italiana](http://www.bibliotecaitaliana.it/) - Digitized texts
