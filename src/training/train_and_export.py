@@ -35,15 +35,15 @@ MODEL_DIR = os.path.join(BASE_DIR, 'model')
 # ==============================================================================
 # Hyperparameters (Optimized for ~8.5M params)
 # ==============================================================================
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 BLOCK_SIZE = 256
 N_EMBD = 256
 N_HEAD = 8
-N_LAYER = 10
+N_LAYER = 15
 DROPOUT = 0.2
 
 # Two-stage Training Config
-PRETRAIN_ITERS = 10000 
+PRETRAIN_ITERS = 20000 
 PRETRAIN_LR = 3e-4
 FINETUNE_ITERS = 2000
 FINETUNE_LR = 5e-5
