@@ -4,7 +4,7 @@ A micro-LLM (~8.2M parameters) trained on Dante Alighieri's works and medieval I
 
 ![ONNX Runtime](https://img.shields.io/badge/Runtime-ONNX%20Web-blue)
 ![PyTorch](https://img.shields.io/badge/Training-PyTorch-orange)
-![Parameters](https://img.shields.io/badge/Params-8.2M-green)
+![Parameters](https://img.shields.io/badge/Params-12.1M-green)
 
 ---
 
@@ -88,13 +88,13 @@ Open **http://localhost:8000** in your browser.
 
 ## 🏗️ Architecture
 
-### Model: NanoGPT (~8.2M parameters)
+### Model: NanoGPT (~12.1M parameters)
 
 | Parameter | Value |
 |-----------|-------|
 | Embedding Dimension | 256 |
 | Attention Heads | 8 |
-| Transformer Layers | 10 |
+| Transformer Layers | 15 |
 | Context Length | 256 |
 | Tokenization | BPE (512 vocab) |
 

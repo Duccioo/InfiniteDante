@@ -225,9 +225,11 @@
 
         #text-output.editable {
             background: var(--accent-dim);
-            padding: 16px;
-            margin: -16px;
+            padding: 2px 4px;
+            margin: 0;
             border-left: 2px solid var(--accent);
+            box-decoration-break: clone;
+            -webkit-box-decoration-break: clone;
         }
 
         /* Cursor */
@@ -344,7 +346,7 @@
 
         .params-grid {
             display: none;
-            grid-template-columns: repeat(5, 1fr);
+            grid-template-columns: repeat(3, 1fr);
             gap: 16px;
             margin-bottom: 16px;
             padding: 16px;
@@ -355,6 +357,98 @@
 
         .params-grid.visible {
             display: grid;
+        }
+
+        /* Context window display */
+        .context-toggle {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .context-toggle-header {
+            display: flex;
+            justify-content: space-between;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            text-transform: uppercase;
+        }
+
+        .context-toggle-btn {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            font-family: var(--font-mono);
+            font-size: 0.55rem;
+            letter-spacing: 0.08em;
+            padding: 6px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            width: 100%;
+        }
+
+        .context-toggle-btn:hover {
+            border-color: var(--text-dim);
+            color: var(--text-dim);
+        }
+
+        .context-toggle-btn.active {
+            border-color: var(--accent);
+            color: var(--accent);
+            background: var(--accent-dim);
+        }
+
+        .context-window-display {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 280px;
+            max-height: 300px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            padding: 12px;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            color: var(--text-dim);
+            overflow-y: auto;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.2s ease;
+            z-index: 100;
+            word-break: break-all;
+        }
+
+        .context-window-display.visible {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .context-window-display .ctx-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            padding-bottom: 6px;
+            border-bottom: 1px solid var(--border);
+            color: var(--accent);
+            font-size: 0.65rem;
+            letter-spacing: 0.08em;
+        }
+
+        .context-window-display .ctx-content {
+            line-height: 1.5;
+            color: var(--text);
+            opacity: 0.7;
+        }
+
+        .context-window-display .ctx-content .ctx-new {
+            background: var(--accent-dim);
+            color: var(--accent);
+            border-radius: 2px;
+            padding: 0 2px;
         }
 
         .param {
@@ -556,7 +650,19 @@
             }
 
             .param:nth-child(5) {
+                grid-column: span 1;
+            }
+
+            .context-toggle {
                 grid-column: span 2;
+            }
+
+            .context-window-display {
+                top: auto;
+                bottom: 180px;
+                right: 10px;
+                left: 10px;
+                width: auto;
             }
 
             .btn {
@@ -627,6 +733,17 @@
         <!-- Edit indicator -->
         <div class="edit-indicator" id="edit-indicator">✎ edit mode</div>
 
+        <!-- Context window display -->
+        <div class="context-window-display" id="context-window-display">
+            <div class="ctx-header">
+                <span>CONTEXT WINDOW</span>
+                <span id="ctx-token-count">0 / 0 tokens</span>
+            </div>
+            <div class="ctx-content" id="ctx-content">
+                <!-- Context text will be displayed here -->
+            </div>
+        </div>
+
         <!-- Controls -->
         <footer class="controls">
             <div class="params-toggle">
@@ -672,6 +789,13 @@
                         <span class="param-value" id="speed-value">50ms</span>
                     </div>
                     <input type="range" id="speed" min="10" max="200" step="10" value="50">
+                </div>
+
+                <div class="context-toggle">
+                    <div class="context-toggle-header">
+                        <span>context window</span>
+                    </div>
+                    <button class="context-toggle-btn" id="context-toggle-btn">⬚ show context</button>
                 </div>
             </div>
 

@@ -22,6 +22,8 @@ let topK = 40;
 let topP = 0.92;
 let repetitionPenalty = 1.15;
 let speed = 50;
+let showContextWindow = false;
+let currentTokens = [];
 
 // DOM Elements (initialized after DOMContentLoaded)
 let textContainer, textOutput, cursorEl;
@@ -29,6 +31,7 @@ let startBtn, stopBtn, clearBtn;
 let temperatureSlider, topKSlider, topPSlider, repPenaltySlider, speedSlider;
 let tempValue, topKValue, topPValue, repPenaltyValue, speedValue;
 let statusEl, editIndicator;
+let contextToggleBtn, contextWindowDisplay, ctxContent, ctxTokenCount;
 
 // ============================================================================
 // Tokenizer Functions (BPE)
@@ -340,6 +343,60 @@ function renderFullText() {
     textOutput.textContent = generatedText;
 }
 
+/**
+ * Update the context window display with current tokens.
+ */
+function updateContextWindowDisplay(tokens, newTokenCount = 1) {
+    if (!showContextWindow || !ctxContent) return;
+
+    // Get the context window tokens (last block_size tokens)
+    const contextTokens = tokens.slice(-meta.block_size);
+    
+    // Decode all tokens to get the text
+    const allBytes = [];
+    for (const t of contextTokens) {
+        if (bpe_vocab[t]) {
+            allBytes.push(...bpe_vocab[t]);
+        }
+    }
+    
+    // Decode to text
+    const contextText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(allBytes));
+    
+    // Calculate where the new tokens start in the text
+    const oldTokens = contextTokens.slice(0, -newTokenCount);
+    const oldBytes = [];
+    for (const t of oldTokens) {
+        if (bpe_vocab[t]) {
+            oldBytes.push(...bpe_vocab[t]);
+        }
+    }
+    const oldText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(oldBytes));
+    
+    // Split text into old and new parts
+    const oldPart = contextText.slice(0, oldText.length);
+    const newPart = contextText.slice(oldText.length);
+    
+    // Update display with highlighted new token
+    ctxContent.innerHTML = escapeHtml(oldPart) + 
+        (newPart ? `<span class="ctx-new">${escapeHtml(newPart)}</span>` : '');
+    
+    // Update token count
+    ctxTokenCount.textContent = `${contextTokens.length} / ${meta.block_size} tokens`;
+    
+    // Auto-scroll to bottom
+    contextWindowDisplay.scrollTop = contextWindowDisplay.scrollHeight;
+}
+
+/**
+ * Escape HTML characters for safe display.
+ */
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
 // ============================================================================
 // Interactive Editing
 // ============================================================================
@@ -405,6 +462,7 @@ async function startGeneration() {
 
             const char = decode([nextToken]);
             updateDisplay(char);
+            updateContextWindowDisplay(tokens);
 
             await new Promise(resolve => setTimeout(resolve, speed));
 
@@ -504,11 +562,23 @@ function setupEventListeners() {
     speedValue = document.getElementById('speed-value');
     statusEl = document.getElementById('status');
     editIndicator = document.getElementById('edit-indicator');
+    contextToggleBtn = document.getElementById('context-toggle-btn');
+    contextWindowDisplay = document.getElementById('context-window-display');
+    ctxContent = document.getElementById('ctx-content');
+    ctxTokenCount = document.getElementById('ctx-token-count');
 
     // Control buttons
     startBtn.addEventListener('click', startGeneration);
     stopBtn.addEventListener('click', stopGeneration);
     clearBtn.addEventListener('click', clearText);
+
+    // Context window toggle
+    contextToggleBtn.addEventListener('click', () => {
+        showContextWindow = !showContextWindow;
+        contextToggleBtn.classList.toggle('active', showContextWindow);
+        contextWindowDisplay.classList.toggle('visible', showContextWindow);
+        contextToggleBtn.textContent = showContextWindow ? '⬛ hide context' : '⬚ show context';
+    });
 
     // Temperature slider
     temperatureSlider.addEventListener('input', (e) => {
