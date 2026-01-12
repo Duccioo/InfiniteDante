@@ -150,9 +150,13 @@ def estimate_loss(model, train_data, val_data, eval_iters=50):
 # ==============================================================================
 # Training Loop
 # ==============================================================================
-def train_stage(model, stage_name, train_data, val_data, iters, lr, patience):
-    """Train with early stopping and loss tracking."""
-    print(f"\n>>> Stage: {stage_name} ({iters} iters, lr={lr}, patience={patience})")
+def train_stage(model, stage_name, train_data, val_data, iters, lr, patience, min_steps=0):
+    """Train with early stopping and loss tracking.
+    
+    Args:
+        min_steps: Minimum steps before early stopping can trigger (default: 0)
+    """
+    print(f"\n>>> Stage: {stage_name} ({iters} iters, lr={lr}, patience={patience}, min_steps={min_steps})")
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr)
     
     train_losses = []
@@ -169,12 +173,13 @@ def train_stage(model, stage_name, train_data, val_data, iters, lr, patience):
             
             print(f"Step {iter:5d}: train loss {losses['train']:.4f}, val loss {losses['val']:.4f}")
             
-            # Early stopping check
+            # Early stopping check (only after min_steps)
             if losses['val'] < best_val_loss:
                 best_val_loss = losses['val']
                 patience_counter = 0
                 best_model_state = {k: v.clone() for k, v in model.state_dict().items()}
-            else:
+            elif iter >= min_steps:
+                # Only increment patience counter after min_steps
                 patience_counter += 1
                 print(f"  -> No improvement. Patience: {patience_counter}/{patience}")
                 
@@ -184,6 +189,8 @@ def train_stage(model, stage_name, train_data, val_data, iters, lr, patience):
                         model.load_state_dict(best_model_state)
                         print(f"  -> Restored best model with val loss {best_val_loss:.4f}")
                     break
+            else:
+                print(f"  -> No improvement, but min_steps ({min_steps}) not reached yet.")
         
         xb, yb = get_batch(train_data)
         logits, loss = model(xb, yb)
@@ -242,7 +249,8 @@ def main():
         train_pre, val_pre = get_split_tensors(pretrain_data_raw)
         pretrain_train_losses, pretrain_val_losses = train_stage(
             model, "Pre-training (General Italian)", train_pre, val_pre, 
-            PRETRAIN_ITERS, PRETRAIN_LR, EARLY_STOPPING_PATIENCE_PRETRAIN
+            PRETRAIN_ITERS, PRETRAIN_LR, EARLY_STOPPING_PATIENCE_PRETRAIN,
+            min_steps=EARLY_STOPPING_MIN_STEPS
         )
         
         # Save pre-training checkpoint
