@@ -294,7 +294,7 @@ class TerzinaScorer:
         self,
         syllable_weight: float = 0.10,  # Reduced: user cares less about syllables
         rhyme_weight: float = 0.4,   #Increased: ABA BCB CDC is key
-        structure_weight: float = 0.30,  # Increased: proper tercet structure
+        structure_weight: float = 0.25,  # Increased: proper tercet structure
         repetition_penalty_weight: float = 0.9,  # NEW: penalty for repetitive text
         syllable_tolerance: int = 2,
     ):

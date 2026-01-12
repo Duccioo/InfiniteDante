@@ -56,12 +56,12 @@ DROPOUT = 0.2
 class PPOConfig:
     """PPO hyperparameters."""
     # Training iterations
-    rl_iters: int = 60
+    rl_iters: int = 100
     
     # Batch and learning - reduced for memory efficiency
     batch_size: int = 4  # Reduced from 8 for GPU memory
     gradient_accumulation_steps: int = 2  # Effective batch = 4 * 2 = 8
-    lr: float = 5e-5  # Increased from 1e-5 for faster learning
+    lr: float = 4e-5  # Increased from 1e-5 for faster learning
     
     # PPO specific - reduced epochs for memory
     ppo_epochs: int = 2  # Reduced from 4 for GPU memory
@@ -69,7 +69,7 @@ class PPOConfig:
     
     # Regularization
     kl_coeff: float = 0.02  # KL penalty coefficient
-    entropy_coeff: float = 0.01  # Entropy bonus for exploration
+    entropy_coeff: float = 0.02  # Entropy bonus for exploration
     max_grad_norm: float = 0.5  # Gradient clipping
     
     # Generation
@@ -148,7 +148,6 @@ TRAINING_PROMPTS = [
     "Amor, ch'al cor gentil ratto s'apprende\n",
     "O voi che siete in piccioletta barca\n",
     "Per me si va ne la città dolente\n",
-    "Io son la via, la verità e la vita\n",
     "La gloria di colui che tutto move\n",
     "Tanto gentile e tanto onesta pare\n",
     "Donne ch'avete intelletto d'amore\n",
