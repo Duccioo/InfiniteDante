@@ -292,9 +292,10 @@ class TerzinaScorer:
 
     def __init__(
         self,
-        syllable_weight: float = 0.15,  # Reduced: user cares less about syllables
-        rhyme_weight: float = 0.55,  # Increased: ABA BCB CDC is key
+        syllable_weight: float = 0.10,  # Reduced: user cares less about syllables
+        rhyme_weight: float = 0.4,   #Increased: ABA BCB CDC is key
         structure_weight: float = 0.30,  # Increased: proper tercet structure
+        repetition_penalty_weight: float = 0.9,  # NEW: penalty for repetitive text
         syllable_tolerance: int = 2,
     ):
         self.syllable_counter = ItalianSyllableCounter()
@@ -303,7 +304,47 @@ class TerzinaScorer:
         self.syllable_weight = syllable_weight
         self.rhyme_weight = rhyme_weight
         self.structure_weight = structure_weight
+        self.repetition_penalty_weight = repetition_penalty_weight
         self.syllable_tolerance = syllable_tolerance
+
+    def compute_repetition_penalty(self, text: str) -> float:
+        """
+        Compute a penalty for repetitive text (prevents reward hacking).
+        
+        Returns a penalty value between 0 (no repetition) and 1 (heavy repetition).
+        """
+        words = text.lower().split()
+        if len(words) < 4:
+            return 0.0
+        
+        # Check for repeated n-grams (2, 3, 4-grams)
+        penalties = []
+        
+        for n in [2, 3, 4]:
+            if len(words) < n * 2:
+                continue
+            
+            ngrams = [tuple(words[i:i+n]) for i in range(len(words) - n + 1)]
+            if not ngrams:
+                continue
+                
+            # Count occurrences
+            from collections import Counter
+            counts = Counter(ngrams)
+            
+            # Calculate repetition ratio
+            total = len(ngrams)
+            repeated = sum(c - 1 for c in counts.values() if c > 1)
+            ratio = repeated / total if total > 0 else 0
+            
+            # Higher weight for longer repeated phrases
+            penalties.append(ratio * (n / 2))
+        
+        if not penalties:
+            return 0.0
+        
+        # Take max penalty (worst repetition)
+        return min(1.0, max(penalties))
 
     def split_into_verses(self, text: str) -> List[str]:
         """Split text into verses (lines)."""
@@ -402,27 +443,97 @@ class TerzinaScorer:
         verses = self.split_into_verses(text)
 
         if len(verses) < 3:
-            return 0.0, {"syllables": 0.0, "rhyme": 0.0, "structure": 0.0, "verses": len(verses)}
+            return 0.0, {"syllables": 0.0, "rhyme": 0.0, "structure": 0.0, "repetition": 0.0, "verses": len(verses)}
 
         syllable_score = self.score_syllables(verses)
         rhyme_score = self.score_rhyme_scheme(verses)
         structure_score = self.score_structure(verses)
+        
+        # Compute repetition penalty
+        repetition_penalty = self.compute_repetition_penalty(text)
 
         total = (
             self.syllable_weight * syllable_score
             + self.rhyme_weight * rhyme_score
             + self.structure_weight * structure_score
         )
+        
+        # Apply repetition penalty (heavily penalize repetitive text)
+        if repetition_penalty > 0.1:
+            total = total * (1 - self.repetition_penalty_weight * repetition_penalty)
 
         breakdown = {
             "syllables": syllable_score,
             "rhyme": rhyme_score,
             "structure": structure_score,
+            "repetition": repetition_penalty,
             "total": total,
             "verses": len(verses),
         }
 
         return total, breakdown
+
+    def compute_per_verse_rewards(self, text: str) -> List[Tuple[float, dict]]:
+        """
+        Compute reward for each verse individually (for reward shaping).
+        
+        Returns:
+            List of (reward, breakdown) tuples for each verse.
+            This enables denser learning signal during RL training.
+        """
+        verses = self.split_into_verses(text)
+        verse_rewards = []
+        
+        for i, verse in enumerate(verses):
+            breakdown = {}
+            
+            # Syllable score for this verse
+            count = self.syllable_counter.count_verse_syllables(verse)
+            deviation = abs(count - 11)
+            if deviation <= self.syllable_tolerance:
+                syl_score = 1.0 - (deviation / (self.syllable_tolerance + 1))
+            else:
+                syl_score = max(0, 0.5 - (deviation - self.syllable_tolerance) * 0.1)
+            breakdown["syllables"] = syl_score
+            breakdown["syllable_count"] = count
+            
+            # Structure score for this verse
+            word_count = len(verse.split())
+            if 5 <= word_count <= 15:
+                struct_score = 1.0
+            elif 3 <= word_count < 5 or 15 < word_count <= 20:
+                struct_score = 0.5
+            else:
+                struct_score = 0.2
+            breakdown["structure"] = struct_score
+            
+            # Rhyme score (check against previous verses in tercet pattern)
+            rhyme_score = 0.0
+            tercet_pos = i % 3  # Position within tercet: 0, 1, 2
+            
+            # ABA pattern: verse 0 should rhyme with verse 2
+            if tercet_pos == 2 and i >= 2:
+                # Check rhyme with verse i-2 (first of tercet)
+                rhyme_score = self.rhyme_detector.score_rhyme(verses[i-2], verse)
+            # Chain: middle verse (pos 1) should rhyme with first verse of next tercet
+            # We can't check forward, but we can check backward
+            elif tercet_pos == 0 and i >= 2:
+                # First of new tercet should rhyme with middle of previous (i-2)
+                rhyme_score = self.rhyme_detector.score_rhyme(verses[i-2], verse)
+            
+            breakdown["rhyme"] = rhyme_score
+            
+            # Compute weighted verse reward
+            verse_reward = (
+                self.syllable_weight * syl_score +
+                self.rhyme_weight * rhyme_score +
+                self.structure_weight * struct_score
+            )
+            breakdown["total"] = verse_reward
+            
+            verse_rewards.append((verse_reward, breakdown))
+        
+        return verse_rewards
 
 
 # Convenience functions for quick testing
