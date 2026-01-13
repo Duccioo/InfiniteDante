@@ -54,27 +54,27 @@ DROPOUT = 0.2
 # ==============================================================================
 @dataclass
 class PPOConfig:
-    """PPO hyperparameters."""
+    """PPO hyperparameters - STABILIZED to prevent mode collapse."""
     # Training iterations
     rl_iters: int = 100
     
     # Batch and learning - reduced for memory efficiency
     batch_size: int = 4  # Reduced from 8 for GPU memory
     gradient_accumulation_steps: int = 2  # Effective batch = 4 * 2 = 8
-    lr: float = 4e-5  # Increased from 1e-5 for faster learning
+    lr: float = 1e-5  # REDUCED from 4e-5 to prevent collapse
     
-    # PPO specific - reduced epochs for memory
+    # PPO specific - more conservative
     ppo_epochs: int = 2  # Reduced from 4 for GPU memory
-    clip_epsilon: float = 0.2  # PPO clipping parameter
+    clip_epsilon: float = 0.1  # REDUCED from 0.2 for smaller updates
     
-    # Regularization
-    kl_coeff: float = 0.02  # KL penalty coefficient
-    entropy_coeff: float = 0.02  # Entropy bonus for exploration
+    # Regularization - STRONGER to prevent collapse
+    kl_coeff: float = 0.15  # INCREASED from 0.02 to keep close to reference
+    entropy_coeff: float = 0.05  # INCREASED from 0.02 for more exploration
     max_grad_norm: float = 0.5  # Gradient clipping
     
     # Generation
     generation_length: int = 150  # Tokens per generation (~1 terzina)
-    temperature: float = 0.8  # Sampling temperature
+    temperature: float = 0.85  # Slightly higher for diversity
     
     # Reward normalization
     normalize_rewards: bool = True

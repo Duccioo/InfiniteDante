@@ -485,7 +485,10 @@ class TerzinaScorer:
         verses = self.split_into_verses(text)
 
         if len(verses) < 3:
-            return 0.0, {"syllables": 0.0, "rhyme": 0.0, "structure": 0.0, "repetition": 0.0, "verses": len(verses)}
+            # Give small reward instead of 0 to provide learning gradient
+            # This encourages model to generate more verses rather than collapsing
+            small_reward = 0.02 * len(verses)  # 0.02 for 1 verse, 0.04 for 2 verses
+            return small_reward, {"syllables": 0.0, "rhyme": 0.0, "structure": 0.0, "repetition": 0.0, "verses": len(verses)}
 
         syllable_score = self.score_syllables(verses)
         rhyme_score = self.score_rhyme_scheme(verses)
@@ -500,9 +503,15 @@ class TerzinaScorer:
             + self.structure_weight * structure_score
         )
         
-        # Apply repetition penalty (heavily penalize repetitive text)
+        # Apply repetition penalty (cap at 70% reduction to maintain learning signal)
         if repetition_penalty > 0.1:
-            total = total * (1 - self.repetition_penalty_weight * repetition_penalty)
+            # Cap the penalty effect at 70% reduction (was 90%)
+            penalty_multiplier = max(0.3, 1 - 0.7 * repetition_penalty)
+            total = total * penalty_multiplier
+        
+        # Minimum reward floor to prevent complete collapse
+        # Even heavily penalized text gets some reward to guide learning
+        total = max(0.05, total)
 
         breakdown = {
             "syllables": syllable_score,
