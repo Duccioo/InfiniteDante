@@ -15,6 +15,8 @@ let generatedText = '';      // Accumulated generated text
 let cantoCount = 1;          // Current canto number
 let charsSinceLastCanto = 0; // Characters since last canto break
 const CHARS_PER_CANTO = 800; // Characters before inserting a canto break
+const MOBILE_BLOCK_SIZE = 128; // Reduced context window for mobile
+let effectiveBlockSize = 256;  // Will be set based on device
 
 // Sampling Parameters (with defaults)
 let temperature = 0.85;
@@ -240,7 +242,7 @@ function sample(probs) {
  * Run inference on the ONNX model.
  */
 async function runInference(tokens) {
-    const inputTokens = tokens.slice(-meta.block_size);
+    const inputTokens = tokens.slice(-effectiveBlockSize);
     const seqLen = inputTokens.length;
     const inputArray = new BigInt64Array(inputTokens.map(t => BigInt(t)));
     const inputTensor = new ort.Tensor('int64', inputArray, [1, seqLen]);
@@ -324,13 +326,60 @@ function updateDisplay(newChar) {
         textContainer.insertBefore(separator, cursorEl);
     }
 
-    // Update text content
-    textOutput.textContent = generatedText;
+    // Update text content (without highlighting for now, highlighting is done in updateInlineContextHighlight)
+    if (!showContextWindow) {
+        textOutput.textContent = generatedText;
+    }
 
     // Smart auto-scroll: only if user is near the bottom (within 100px)
     const scrollBottom = textContainer.scrollHeight - textContainer.scrollTop - textContainer.clientHeight;
     if (scrollBottom < 100) {
         textContainer.scrollTop = textContainer.scrollHeight;
+    }
+}
+
+/**
+ * Update inline context highlighting in main text display.
+ * Shows the portion of text within the context window with blue highlighting.
+ */
+function updateInlineContextHighlight(tokens) {
+    if (!showContextWindow) return;
+    
+    // Get context tokens
+    const contextTokens = tokens.slice(-effectiveBlockSize);
+    
+    // Calculate how many characters are in context vs outside
+    // We need to decode the full token history and the context portion
+    const fullBytes = [];
+    for (const t of tokens) {
+        if (bpe_vocab[t]) {
+            fullBytes.push(...bpe_vocab[t]);
+        }
+    }
+    const fullText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(fullBytes));
+    
+    const contextBytes = [];
+    for (const t of contextTokens) {
+        if (bpe_vocab[t]) {
+            contextBytes.push(...bpe_vocab[t]);
+        }
+    }
+    const contextText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(contextBytes));
+    
+    // Split the generatedText into non-context and context portions
+    // The context portion is the last N characters that correspond to context tokens
+    const contextLength = contextText.length;
+    const totalLength = generatedText.length;
+    
+    if (contextLength >= totalLength) {
+        // All text is in context
+        textOutput.innerHTML = `<span class="context-highlight">${escapeHtml(generatedText)}</span>`;
+    } else {
+        // Split into non-context and context parts
+        const nonContextPart = generatedText.slice(0, totalLength - contextLength);
+        const contextPart = generatedText.slice(totalLength - contextLength);
+        textOutput.innerHTML = escapeHtml(nonContextPart) + 
+            `<span class="context-highlight">${escapeHtml(contextPart)}</span>`;
     }
 }
 
@@ -349,8 +398,8 @@ function renderFullText() {
 function updateContextWindowDisplay(tokens, newTokenCount = 1) {
     if (!showContextWindow || !ctxContent) return;
 
-    // Get the context window tokens (last block_size tokens)
-    const contextTokens = tokens.slice(-meta.block_size);
+    // Get the context window tokens (last effectiveBlockSize tokens)
+    const contextTokens = tokens.slice(-effectiveBlockSize);
     
     // Decode all tokens to get the text
     const allBytes = [];
@@ -382,7 +431,7 @@ function updateContextWindowDisplay(tokens, newTokenCount = 1) {
         (newPart ? `<span class="ctx-new">${escapeHtml(newPart)}</span>` : '');
     
     // Update token count
-    ctxTokenCount.textContent = `${contextTokens.length} / ${meta.block_size} tokens`;
+    ctxTokenCount.textContent = `${contextTokens.length} / ${effectiveBlockSize} tokens`;
     
     // Auto-scroll to bottom
     contextWindowDisplay.scrollTop = contextWindowDisplay.scrollHeight;
@@ -456,13 +505,14 @@ async function startGeneration() {
             const nextToken = await generateNext(tokens);
             tokens.push(nextToken);
 
-            if (tokens.length > meta.block_size) {
-                tokens = tokens.slice(-meta.block_size);
+            if (tokens.length > effectiveBlockSize) {
+                tokens = tokens.slice(-effectiveBlockSize);
             }
 
             const char = decode([nextToken]);
             updateDisplay(char);
             updateContextWindowDisplay(tokens);
+            updateInlineContextHighlight(tokens);
 
             await new Promise(resolve => setTimeout(resolve, speed));
 
@@ -513,9 +563,17 @@ async function initialize() {
         }
         meta = await metaResponse.json();
         initBPE(meta.merges);
+        
+        // Detect mobile and set effective block size
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) 
+                        || window.innerWidth < 768;
+        effectiveBlockSize = isMobile ? MOBILE_BLOCK_SIZE : meta.block_size;
+        
         console.log('Loaded BPE tokenizer:', {
             vocab_size: meta.vocab_size,
-            block_size: meta.block_size
+            block_size: meta.block_size,
+            effective_block_size: effectiveBlockSize,
+            is_mobile: isMobile
         });
 
         // Load ONNX model
@@ -633,20 +691,8 @@ function setupEventListeners() {
         }
     });
 
-    // Touch gesture for mobile (tap to toggle)
-    let lastTap = 0;
-    textContainer.addEventListener('touchend', (e) => {
-        if (isGenerating) return; // Don't handle taps while generating
-
-        const currentTime = new Date().getTime();
-        const tapLength = currentTime - lastTap;
-        if (tapLength < 300 && tapLength > 0) {
-            // Double tap - clear
-            e.preventDefault();
-            clearText();
-        }
-        lastTap = currentTime;
-    });
+    // Touch gesture for mobile - disabled double-tap clear to prevent accidental text deletion
+    // Users can use the clear button instead
 }
 
 // Initialize on page load

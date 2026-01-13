@@ -292,9 +292,9 @@ class TerzinaScorer:
 
     def __init__(
         self,
-        syllable_weight: float = 0.10,  # Reduced: user cares less about syllables
+        syllable_weight: float = 0.20,  # Reduced: user cares less about syllables
         rhyme_weight: float = 0.4,   #Increased: ABA BCB CDC is key
-        structure_weight: float = 0.25,  # Increased: proper tercet structure
+        structure_weight: float = 0.30,  # Increased: proper tercet structure
         repetition_penalty_weight: float = 0.9,  # NEW: penalty for repetitive text
         syllable_tolerance: int = 2,
     ):
@@ -312,14 +312,37 @@ class TerzinaScorer:
         Compute a penalty for repetitive text (prevents reward hacking).
         
         Returns a penalty value between 0 (no repetition) and 1 (heavy repetition).
+        Now much more aggressive to prevent "mosso mosso mosso" type outputs.
         """
+        from collections import Counter
+        
         words = text.lower().split()
         if len(words) < 4:
             return 0.0
         
-        # Check for repeated n-grams (2, 3, 4-grams)
         penalties = []
         
+        # === 1. Single word repetition check (new, most aggressive) ===
+        # If any single word appears too many times, heavy penalty
+        word_counts = Counter(words)
+        total_words = len(words)
+        
+        # Filter out common short words that may repeat naturally
+        stop_words = {'e', 'il', 'la', 'lo', 'i', 'le', 'gli', 'un', 'una', 'di', 'a', 'da', 'in', 'con', 'su', 'per', 'che', 'non', 'mi', 'si', 'è'}
+        
+        for word, count in word_counts.items():
+            if word in stop_words or len(word) < 3:
+                continue
+            
+            word_ratio = count / total_words
+            # If a single word is >15% of total words, that's suspicious
+            # If it's >25%, that's very bad
+            if word_ratio > 0.15:
+                # Exponential penalty for word over-use
+                word_penalty = min(1.0, (word_ratio - 0.10) * 5)  # Scales 0.15->0.25, 0.25->0.75, 0.30->1.0
+                penalties.append(word_penalty)
+        
+        # === 2. N-gram repetition check (improved) ===
         for n in [2, 3, 4]:
             if len(words) < n * 2:
                 continue
@@ -328,23 +351,42 @@ class TerzinaScorer:
             if not ngrams:
                 continue
                 
-            # Count occurrences
-            from collections import Counter
             counts = Counter(ngrams)
             
-            # Calculate repetition ratio
+            # Calculate repetition ratio with stronger weighting
             total = len(ngrams)
             repeated = sum(c - 1 for c in counts.values() if c > 1)
             ratio = repeated / total if total > 0 else 0
             
-            # Higher weight for longer repeated phrases
-            penalties.append(ratio * (n / 2))
+            # Much stronger weight for repeated phrases
+            # n=2: ratio * 1.5, n=3: ratio * 2.5, n=4: ratio * 4
+            weight = n * 1.0 + (n - 2) * 0.5
+            penalties.append(ratio * weight)
+        
+        # === 3. Consecutive duplicate check (new) ===
+        # Check for words repeated directly in sequence: "mosso mosso mosso"
+        consecutive_repeats = 0
+        for i in range(len(words) - 1):
+            if words[i] == words[i+1] and words[i] not in stop_words and len(words[i]) >= 3:
+                consecutive_repeats += 1
+        
+        if consecutive_repeats > 0:
+            consec_ratio = consecutive_repeats / len(words)
+            # Very aggressive: even 2 consecutive repeats in short text is bad
+            consec_penalty = min(1.0, consec_ratio * 10)
+            penalties.append(consec_penalty)
         
         if not penalties:
             return 0.0
         
-        # Take max penalty (worst repetition)
-        return min(1.0, max(penalties))
+        # Take max penalty (worst repetition type) but also add average for combined effect
+        max_penalty = max(penalties)
+        avg_penalty = sum(penalties) / len(penalties)
+        
+        # Final penalty: 70% worst offender + 30% average
+        final_penalty = 0.7 * max_penalty + 0.3 * avg_penalty
+        
+        return min(1.0, final_penalty)
 
     def split_into_verses(self, text: str) -> List[str]:
         """Split text into verses (lines)."""
