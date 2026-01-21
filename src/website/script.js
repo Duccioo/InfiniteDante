@@ -27,6 +27,11 @@ let speed = 50;
 let showContextWindow = false;
 let currentTokens = [];
 
+// Dante Rhyme Mode (terza rima: ABA BCB CDC...)
+let danteRhymeMode = true; // Enabled by default
+let verseEndings = [];      // Stores the ending sound of each verse
+let currentVerseNumber = 0; // Current verse count (0-indexed)
+
 // DOM Elements (initialized after DOMContentLoaded)
 let textContainer, textOutput, cursorEl;
 let startBtn, stopBtn, clearBtn;
@@ -254,6 +259,125 @@ async function runInference(tokens) {
 }
 
 /**
+ * Get the ending sound pattern of a word/verse for rhyme matching.
+ * Extracts the last vowel cluster and following consonants.
+ */
+function getEndingSound(text) {
+    // Clean and normalize the text
+    const cleaned = text.toLowerCase().trim();
+    if (cleaned.length === 0) return '';
+    
+    // Italian vowels
+    const vowels = 'aeiouàèéìòóù';
+    
+    // Find the last accented/stressed syllable pattern
+    // Look for the last 2-4 characters that form a rhyme pattern
+    let ending = '';
+    let foundVowel = false;
+    
+    for (let i = cleaned.length - 1; i >= 0 && ending.length < 5; i--) {
+        const char = cleaned[i];
+        if (char === ' ' || char === '\n') break;
+        
+        ending = char + ending;
+        
+        if (vowels.includes(char)) {
+            foundVowel = true;
+            // Continue to capture the consonant before the vowel
+            if (i > 0 && !vowels.includes(cleaned[i-1])) {
+                ending = cleaned[i-1] + ending;
+            }
+            break;
+        }
+    }
+    
+    return foundVowel ? ending : cleaned.slice(-3);
+}
+
+/**
+ * Check if two endings rhyme (Italian style).
+ */
+function doTheyRhyme(ending1, ending2) {
+    if (!ending1 || !ending2) return false;
+    
+    // Normalize endings
+    const e1 = ending1.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    const e2 = ending2.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    
+    // Check for exact match or suffix match
+    if (e1 === e2) return true;
+    if (e1.endsWith(e2) || e2.endsWith(e1)) return true;
+    
+    // Check last 2-3 characters match
+    const minLen = Math.min(e1.length, e2.length, 3);
+    return e1.slice(-minLen) === e2.slice(-minLen);
+}
+
+/**
+ * Get the rhyme scheme target for current verse in terza rima (ABA BCB CDC...).
+ * Returns the verse index that the current verse should rhyme with, or -1 if free.
+ */
+function getRhymeTarget(verseIndex) {
+    // Terza rima pattern:
+    // Verse 0 (A): free
+    // Verse 1 (B): free  
+    // Verse 2 (A): rhymes with verse 0
+    // Verse 3 (B): rhymes with verse 1
+    // Verse 4 (C): rhymes with verse 3 (the B of previous tercet becomes A of next)
+    // Verse 5 (B): rhymes with verse 4
+    // etc.
+    
+    if (verseIndex < 2) return -1; // First two verses are free
+    
+    // Pattern repeats every 3 verses after the first tercet
+    // For verse n >= 2:
+    // If (n % 3) == 2: rhyme with n-2 (A rhymes with A)
+    // If (n % 3) == 0: rhyme with n-2 (continuing chain)
+    // If (n % 3) == 1: rhyme with n-2 (B rhymes with B)
+    
+    return verseIndex - 2;
+}
+
+/**
+ * Score how well a token rhymes with the target ending.
+ */
+function getRhymeScore(tokenId, targetEnding) {
+    if (!bpe_vocab[tokenId]) return 0;
+    
+    const tokenBytes = bpe_vocab[tokenId];
+    const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
+    const tokenEnding = getEndingSound(tokenText);
+    
+    if (!tokenEnding || !targetEnding) return 0;
+    
+    // Normalize for comparison
+    const t = tokenEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    const target = targetEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    
+    // Exact match
+    if (t === target) return 1.0;
+    
+    // Check suffix matching (last n characters)
+    for (let len = Math.min(t.length, target.length, 4); len >= 2; len--) {
+        if (t.slice(-len) === target.slice(-len)) {
+            return 0.5 + (len / 8); // 0.5 to 1.0 based on match length
+        }
+    }
+    
+    return 0;
+}
+
+/**
+ * Check if a token ends a verse (contains newline or is followed by newline).
+ */
+function isVerseEndingToken(tokenId) {
+    if (!bpe_vocab[tokenId]) return false;
+    const tokenBytes = bpe_vocab[tokenId];
+    const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
+    return tokenText.includes('\n');
+}
+
+/**
  * Generate the next token with advanced sampling.
  */
 async function generateNext(context) {
@@ -271,6 +395,37 @@ async function generateNext(context) {
 
     // Apply Top-P (nucleus) filtering
     probs = applyTopP(probs, topP);
+
+    // Dante Rhyme Mode: boost tokens that rhyme correctly at verse endings
+    if (danteRhymeMode) {
+        const rhymeTarget = getRhymeTarget(currentVerseNumber);
+        
+        if (rhymeTarget >= 0 && rhymeTarget < verseEndings.length) {
+            const targetEnding = verseEndings[rhymeTarget];
+            
+            // Get top candidates and check for rhyming tokens
+            const indexed = probs.map((p, i) => ({ prob: p, idx: i }));
+            indexed.sort((a, b) => b.prob - a.prob);
+            
+            // Look at top-k candidates for rhyming tokens
+            const topCandidates = indexed.slice(0, Math.min(topK * 2, 100));
+            
+            // Find tokens that are verse-ending AND rhyme
+            for (const candidate of topCandidates) {
+                if (isVerseEndingToken(candidate.idx)) {
+                    const rhymeScore = getRhymeScore(candidate.idx, targetEnding);
+                    if (rhymeScore > 0.6) {
+                        // Boost this token's probability significantly
+                        probs[candidate.idx] *= (1 + rhymeScore * 3);
+                    }
+                }
+            }
+            
+            // Re-normalize probabilities
+            const sum = probs.reduce((a, b) => a + b, 0);
+            probs = probs.map(p => p / sum);
+        }
+    }
 
     return sample(probs);
 }
@@ -510,6 +665,16 @@ async function startGeneration() {
             }
 
             const char = decode([nextToken]);
+            
+            // Track verse endings for Dante rhyme mode
+            if (danteRhymeMode && char.includes('\n')) {
+                // Extract the ending of the current verse
+                const currentVerse = generatedText.split('\n').pop() || '';
+                const ending = getEndingSound(currentVerse);
+                verseEndings.push(ending);
+                currentVerseNumber++;
+            }
+            
             updateDisplay(char);
             updateContextWindowDisplay(tokens);
             updateInlineContextHighlight(tokens);
@@ -545,6 +710,9 @@ function clearText() {
     statusEl.textContent = 'CLEARED — PRESS START';
     disableEditing();
     resetDecoder(); // Clear pending UTF-8 bytes
+    // Reset rhyme tracking
+    verseEndings = [];
+    currentVerseNumber = 0;
 }
 
 // ============================================================================
@@ -638,6 +806,17 @@ function setupEventListeners() {
         contextToggleBtn.textContent = showContextWindow ? '⬛ hide context' : '⬚ show context';
     });
 
+    // Dante Rhyme Mode toggle
+    const rhymeToggleBtn = document.getElementById('rhyme-toggle-btn');
+    const rhymeStatus = document.getElementById('rhyme-status');
+    
+    rhymeToggleBtn.addEventListener('click', () => {
+        danteRhymeMode = !danteRhymeMode;
+        rhymeToggleBtn.classList.toggle('active', danteRhymeMode);
+        rhymeStatus.textContent = danteRhymeMode ? 'ON' : 'OFF';
+        rhymeToggleBtn.textContent = danteRhymeMode ? '🎭 terza rima (ABA BCB)' : '🎭 terza rima OFF';
+    });
+
     // Temperature slider
     temperatureSlider.addEventListener('input', (e) => {
         temperature = parseFloat(e.target.value);
@@ -667,6 +846,21 @@ function setupEventListeners() {
         speed = parseInt(e.target.value);
         speedValue.textContent = speed + 'ms';
     });
+
+    // Context Size slider
+    const ctxSizeSlider = document.getElementById('ctx-size');
+    const ctxSizeValue = document.getElementById('ctx-size-value');
+    
+    // Initialize slider with current effective block size
+    if (ctxSizeSlider && ctxSizeValue) {
+        ctxSizeSlider.value = effectiveBlockSize;
+        ctxSizeValue.textContent = effectiveBlockSize;
+        
+        ctxSizeSlider.addEventListener('input', (e) => {
+            effectiveBlockSize = parseInt(e.target.value);
+            ctxSizeValue.textContent = effectiveBlockSize;
+        });
+    }
 
     // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {

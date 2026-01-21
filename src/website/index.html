@@ -802,11 +802,27 @@
                     <input type="range" id="speed" min="10" max="200" step="10" value="50">
                 </div>
 
+                <div class="param">
+                    <div class="param-header">
+                        <span>ctx-size</span>
+                        <span class="param-value" id="ctx-size-value">256</span>
+                    </div>
+                    <input type="range" id="ctx-size" min="64" max="512" step="32" value="256">
+                </div>
+
                 <div class="context-toggle">
                     <div class="context-toggle-header">
                         <span>context window</span>
                     </div>
                     <button class="context-toggle-btn" id="context-toggle-btn">⬚ show context</button>
+                </div>
+
+                <div class="context-toggle">
+                    <div class="context-toggle-header">
+                        <span>dante rhyme</span>
+                        <span class="param-value" id="rhyme-status">ON</span>
+                    </div>
+                    <button class="context-toggle-btn active" id="rhyme-toggle-btn">🎭 terza rima (ABA BCB)</button>
                 </div>
             </div>
 
