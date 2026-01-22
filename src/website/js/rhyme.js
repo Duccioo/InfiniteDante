@@ -102,16 +102,13 @@ function doTheyRhyme(ending1, ending2) {
 }
 
 /**
- * Find all tokens in vocabulary that contain newline and would rhyme with target.
+ * Find all tokens in vocabulary that would create a rhyme with target.
  * Returns array of {tokenId, text, ending} sorted by how well they match.
  */
-function findRhymingNewlineTokens(targetEnding, probs) {
+function findRhymingTokens(targetEnding, probs) {
     if (!targetEnding || !bpe_vocab) return [];
     
     const rhymingTokens = [];
-    const targetNorm = targetEnding.toLowerCase()
-        .replace(/[àá]/g, 'a').replace(/[èé]/g, 'e')
-        .replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
     
     // Search through all tokens in vocabulary
     for (let tokenId = 0; tokenId < Object.keys(bpe_vocab).length; tokenId++) {
@@ -120,20 +117,16 @@ function findRhymingNewlineTokens(targetEnding, probs) {
         const tokenBytes = bpe_vocab[tokenId];
         const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
         
-        // Only interested in tokens that contain newline (verse-ending tokens)
-        if (!tokenText.includes('\n')) continue;
+        // Clean the token text to check for rhyme
+        // We want tokens that could be the END of a word
+        // So we remove trailing punctuation/spaces for the check
+        const cleanText = tokenText.trim().replace(/[.,;:!?'"»«\-–—]+$/g, '');
         
-        // Get the part before newline
-        const beforeNewline = tokenText.split('\n')[0];
-        // Skip tokens with text too short before newline (need at least 2 chars for rhyme)
-        if (beforeNewline.length < 2) continue;
+        // Skip short tokens or tokens that are just punctuation
+        if (cleanText.length < 2) continue;
         
-        // Clean punctuation from the end
-        const cleanedText = beforeNewline.replace(/[.,;:!?'"»«\-–—]+$/g, '');
-        if (cleanedText.length < 2) continue;
-        
-        // Get the ending of that part
-        const tokenEnding = getEndingSound(cleanedText);
+        // Get the ending of the token
+        const tokenEnding = getEndingSound(cleanText);
         if (!tokenEnding || tokenEnding.length < 2) continue;
         
         // Check if it rhymes
@@ -141,7 +134,8 @@ function findRhymingNewlineTokens(targetEnding, probs) {
             const prob = probs ? probs[tokenId] : 0;
             rhymingTokens.push({
                 tokenId,
-                text: beforeNewline,
+                text: tokenText, // Keep original text
+                cleanText: cleanText,
                 ending: tokenEnding,
                 prob
             });

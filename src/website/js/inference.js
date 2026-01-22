@@ -44,60 +44,75 @@ async function generateNext(context) {
 
     // Dante Rhyme Mode: force rhyming endings when needed
     if (danteRhymeMode) {
-        const rhymeTarget = getRhymeTarget(currentVerseNumber);
-        const partialVerse = getCurrentPartialVerse();
-        const verseLength = partialVerse.length;
-        
-        // Only log when we have a rhyme target
-        if (rhymeTarget >= 0 && rhymeTarget < verseEndings.length) {
-            const targetEnding = verseEndings[rhymeTarget];
+        // STAGE 3: If we just forced a rhyming word, now force a newline/punctuation to end the verse
+        if (justForcedRhyme) {
+            justForcedRhyme = false;
+            console.log(`[RHYME] Completing verse after forced rhyme`);
             
-            // When verse is getting long, try to force a rhyming ending
-            if (verseLength >= 35 && targetEnding) {
-                console.log(`[RHYME] Verse ${currentVerseNumber}, length=${verseLength}, target="${targetEnding}"`);
-                
-                // Find ALL tokens in vocabulary that would create a rhyme
-                const rhymingTokens = findRhymingNewlineTokens(targetEnding, probs);
-                
-                if (rhymingTokens.length > 0) {
-                    console.log(`[RHYME] Found ${rhymingTokens.length} rhyming tokens, best: "${rhymingTokens[0].text}"`);
-                    
-                    // Create a new probability distribution that strongly favors rhyming tokens
-                    // The longer the verse, the more we force the rhyme
-                    const forceStrength = Math.min((verseLength - 35) / 20, 1.0); // 0 at 35, 1 at 55+
-                    
-                    if (Math.random() < 0.3 + forceStrength * 0.5) {
-                        // Force selection from rhyming tokens
-                        // Weight by original probability
-                        const totalProb = rhymingTokens.reduce((sum, t) => sum + t.prob + 0.0001, 0);
-                        let r = Math.random() * totalProb;
-                        
-                        for (const token of rhymingTokens) {
-                            r -= (token.prob + 0.0001);
-                            if (r <= 0) {
-                                console.log(`[RHYME] FORCED rhyme: "${token.text}" (ending: ${token.ending})`);
-                                return token.tokenId;
-                            }
-                        }
-                        // Fallback to first rhyming token
-                        console.log(`[RHYME] FORCED first rhyme: "${rhymingTokens[0].text}"`);
-                        return rhymingTokens[0].tokenId;
+            // Look for tokens that are just newline or punctuation+newline
+            // Simple heuristic updates: find tokens containing newlines
+            // Boost them massively to ensure line break
+            for (let id = 0; id < probs.length; id++) {
+                if (bpe_vocab[id]) {
+                    const bytes = bpe_vocab[id];
+                    const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
+                    if (text.includes('\n')) {
+                        probs[id] *= 1000.0;
                     }
-                } else {
-                    console.log(`[RHYME] No rhyming tokens found for "${targetEnding}"`);
-                }
-                
-                // Even if not forcing, still boost rhyming tokens
-                for (const token of rhymingTokens.slice(0, 50)) {
-                    probs[token.tokenId] *= 10.0;
-                }
-                
-                // Re-normalize
-                const sum = probs.reduce((a, b) => a + b, 0);
-                if (sum > 0) {
-                    probs = probs.map(p => p / sum);
                 }
             }
+        } 
+        else {
+            const rhymeTarget = getRhymeTarget(currentVerseNumber);
+            const partialVerse = getCurrentPartialVerse();
+            const verseLength = partialVerse.length;
+            
+            // Only examine rhymes when we have a target and verse is getting substantial
+            if (rhymeTarget >= 0 && rhymeTarget < verseEndings.length && verseLength >= 25) {
+                const targetEnding = verseEndings[rhymeTarget];
+                
+                if (targetEnding) {
+                    // Find ALL tokens in vocabulary that would create a rhyme (word ending)
+                    const rhymingTokens = findRhymingTokens(targetEnding, probs);
+                    
+                    if (rhymingTokens.length > 0) {
+                        // STAGE 2: Force rhyme selection if verse is long
+                        const shouldForce = verseLength >= 45;
+                        
+                        if (shouldForce) {
+                            console.log(`[RHYME] FORCING rhyme for "${targetEnding}" at len ${verseLength}`);
+                             // Select a rhyming token
+                            const totalProb = rhymingTokens.reduce((sum, t) => sum + t.prob + 0.0001, 0);
+                            let r = Math.random() * totalProb;
+                            
+                            for (const token of rhymingTokens) {
+                                r -= (token.prob + 0.0001);
+                                if (r <= 0) {
+                                    console.log(`[RHYME] Selected forced rhyme: "${token.text}"`);
+                                    justForcedRhyme = true;
+                                    return token.tokenId;
+                                }
+                            }
+                            // Fallback
+                            justForcedRhyme = true;
+                            return rhymingTokens[0].tokenId;
+                        }
+                        
+                        // STAGE 1: Boost rhyming words (verse length 25-45)
+                        // console.log(`[RHYME] Boosting ${rhymingTokens.length} rhymes for "${targetEnding}"`);
+                        for (const token of rhymingTokens.slice(0, 50)) {
+                             // Strong boost
+                            probs[token.tokenId] *= 20.0;
+                        }
+                    } 
+                }
+            }
+        }
+        
+        // Re-normalize after any boosting
+        const sum = probs.reduce((a, b) => a + b, 0);
+        if (sum > 0) {
+            probs = probs.map(p => p / sum);
         }
     }
 

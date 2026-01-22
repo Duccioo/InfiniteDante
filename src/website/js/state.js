@@ -30,6 +30,7 @@ let currentTokens = [];
 let danteRhymeMode = true; // Enabled by default
 let verseEndings = [];      // Stores the ending sound of each verse
 let currentVerseNumber = 0; // Current verse count (0-indexed)
+let justForcedRhyme = false; // Track if we just forced a rhyming word
 
 // DOM Elements (initialized after DOMContentLoaded)
 let textContainer, textOutput, cursorEl;
