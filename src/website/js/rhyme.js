@@ -73,21 +73,32 @@ function getEndingSound(text) {
 
 /**
  * Check if two endings rhyme (Italian style).
+ * Requires at least 2 characters to match at the end.
  */
 function doTheyRhyme(ending1, ending2) {
     if (!ending1 || !ending2) return false;
+    
+    // Both endings must be at least 2 characters for a valid rhyme
+    if (ending1.length < 2 || ending2.length < 2) return false;
     
     // Normalize endings
     const e1 = ending1.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
     const e2 = ending2.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
     
-    // Check for exact match or suffix match
+    // Check for exact match
     if (e1 === e2) return true;
-    if (e1.endsWith(e2) || e2.endsWith(e1)) return true;
     
-    // Check last 2-3 characters match
-    const minLen = Math.min(e1.length, e2.length, 3);
-    return e1.slice(-minLen) === e2.slice(-minLen);
+    // Check suffix match (only if suffix is at least 2 chars)
+    if (e1.length >= 2 && e2.endsWith(e1)) return true;
+    if (e2.length >= 2 && e1.endsWith(e2)) return true;
+    
+    // Check last 2-3 characters match (minimum 2 required)
+    const matchLen = Math.min(e1.length, e2.length, 3);
+    if (matchLen >= 2) {
+        return e1.slice(-matchLen) === e2.slice(-matchLen);
+    }
+    
+    return false;
 }
 
 /**
@@ -114,11 +125,16 @@ function findRhymingNewlineTokens(targetEnding, probs) {
         
         // Get the part before newline
         const beforeNewline = tokenText.split('\n')[0];
-        if (beforeNewline.length === 0) continue; // Skip pure newline tokens
+        // Skip tokens with text too short before newline (need at least 2 chars for rhyme)
+        if (beforeNewline.length < 2) continue;
+        
+        // Clean punctuation from the end
+        const cleanedText = beforeNewline.replace(/[.,;:!?'"»«\-–—]+$/g, '');
+        if (cleanedText.length < 2) continue;
         
         // Get the ending of that part
-        const tokenEnding = getEndingSound(beforeNewline);
-        if (!tokenEnding) continue;
+        const tokenEnding = getEndingSound(cleanedText);
+        if (!tokenEnding || tokenEnding.length < 2) continue;
         
         // Check if it rhymes
         if (doTheyRhyme(tokenEnding, targetEnding)) {
