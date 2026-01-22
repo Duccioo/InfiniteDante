@@ -91,6 +91,54 @@ function doTheyRhyme(ending1, ending2) {
 }
 
 /**
+ * Find all tokens in vocabulary that contain newline and would rhyme with target.
+ * Returns array of {tokenId, text, ending} sorted by how well they match.
+ */
+function findRhymingNewlineTokens(targetEnding, probs) {
+    if (!targetEnding || !bpe_vocab) return [];
+    
+    const rhymingTokens = [];
+    const targetNorm = targetEnding.toLowerCase()
+        .replace(/[àá]/g, 'a').replace(/[èé]/g, 'e')
+        .replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    
+    // Search through all tokens in vocabulary
+    for (let tokenId = 0; tokenId < Object.keys(bpe_vocab).length; tokenId++) {
+        if (!bpe_vocab[tokenId]) continue;
+        
+        const tokenBytes = bpe_vocab[tokenId];
+        const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
+        
+        // Only interested in tokens that contain newline (verse-ending tokens)
+        if (!tokenText.includes('\n')) continue;
+        
+        // Get the part before newline
+        const beforeNewline = tokenText.split('\n')[0];
+        if (beforeNewline.length === 0) continue; // Skip pure newline tokens
+        
+        // Get the ending of that part
+        const tokenEnding = getEndingSound(beforeNewline);
+        if (!tokenEnding) continue;
+        
+        // Check if it rhymes
+        if (doTheyRhyme(tokenEnding, targetEnding)) {
+            const prob = probs ? probs[tokenId] : 0;
+            rhymingTokens.push({
+                tokenId,
+                text: beforeNewline,
+                ending: tokenEnding,
+                prob
+            });
+        }
+    }
+    
+    // Sort by probability (highest first)
+    rhymingTokens.sort((a, b) => b.prob - a.prob);
+    
+    return rhymingTokens;
+}
+
+/**
  * Get the rhyme scheme target for current verse in terza rima (ABA BCB CDC...).
  * Returns the verse index that the current verse should rhyme with, or -1 if free.
  */
