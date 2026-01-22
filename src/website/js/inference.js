@@ -68,8 +68,13 @@ async function generateNext(context) {
             const verseLength = partialVerse.length;
             
             // Only examine rhymes when we have a target and verse is getting substantial
-            if (rhymeTarget >= 0 && rhymeTarget < verseEndings.length && verseLength >= 25) {
+            if (rhymeTarget >= 0 && rhymeTarget < verseEndings.length && verseLength >= 20) {
                 const targetEnding = verseEndings[rhymeTarget];
+                
+                // Debug log occasionally to verify target is correct
+                if (Math.random() < 0.05) {
+                    console.log(`[RHYME] Verse ${currentVerseNumber}, target="${targetEnding}", len=${verseLength}`);
+                }
                 
                 if (targetEnding) {
                     // Find ALL tokens in vocabulary that would create a rhyme (word ending)
@@ -77,7 +82,8 @@ async function generateNext(context) {
                     
                     if (rhymingTokens.length > 0) {
                         // STAGE 2: Force rhyme selection if verse is long
-                        const shouldForce = verseLength >= 45;
+                        // Lowered threshold to 35 to catch endecasyllables earlier
+                        const shouldForce = verseLength >= 35;
                         
                         if (shouldForce) {
                             console.log(`[RHYME] FORCING rhyme for "${targetEnding}" at len ${verseLength}`);
@@ -98,13 +104,19 @@ async function generateNext(context) {
                             return rhymingTokens[0].tokenId;
                         }
                         
-                        // STAGE 1: Boost rhyming words (verse length 25-45)
-                        // console.log(`[RHYME] Boosting ${rhymingTokens.length} rhymes for "${targetEnding}"`);
+                        // STAGE 1: Boost rhyming words (verse length 20-35)
+                        // Log only once per verse roughly
+                        if (verseLength === 25) {
+                             console.log(`[RHYME] Boosting ${rhymingTokens.length} rhymes for "${targetEnding}" (sample: ${rhymingTokens[0].text})`);
+                        }
+                        
                         for (const token of rhymingTokens.slice(0, 50)) {
                              // Strong boost
-                            probs[token.tokenId] *= 20.0;
+                            probs[token.tokenId] *= 50.0;
                         }
-                    } 
+                    } else {
+                         if (verseLength === 30) console.log(`[RHYME] No tokens found for "${targetEnding}"`);
+                    }
                 }
             }
         }
