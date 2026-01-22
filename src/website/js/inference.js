@@ -54,38 +54,44 @@ async function generateNext(context) {
             console.log(`[RHYME] Target ending: "${targetEnding}"`);
             
             if (targetEnding) {
-                // Get top candidates
+                // Get top candidates - check more to find rhyming tokens
                 const indexed = probs.map((p, i) => ({ prob: p, idx: i }));
                 indexed.sort((a, b) => b.prob - a.prob);
                 
-                // Check top candidates for rhyming potential
-                const topCandidates = indexed.slice(0, Math.min(topK * 3, 150));
+                // Check more candidates for rhyming potential
+                const topCandidates = indexed.slice(0, Math.min(topK * 5, 300));
                 
-                let foundRhymingToken = false;
-                let bestRhymeIdx = -1;
-                let bestRhymeProb = 0;
                 let boostCount = 0;
+                let perfectCount = 0;
                 
                 for (const candidate of topCandidates) {
                     const rhymeScore = calculateRhymeScoreForToken(candidate.idx, targetEnding);
                     
                     if (rhymeScore >= 1.0) {
-                        // Token ends verse with perfect rhyme - boost significantly
+                        // Perfect rhyme with newline - very strong boost
+                        probs[candidate.idx] *= 10.0;
+                        perfectCount++;
+                        boostCount++;
+                    } else if (rhymeScore >= 0.7) {
+                        // Strong rhyme match
                         probs[candidate.idx] *= 5.0;
-                        foundRhymingToken = true;
                         boostCount++;
                     } else if (rhymeScore >= 0.5) {
-                        // Token contributes to potential rhyme - moderate boost
+                        // Good rhyme potential
+                        probs[candidate.idx] *= 3.0;
+                        boostCount++;
+                    } else if (rhymeScore >= 0.3) {
+                        // Moderate rhyme potential
                         probs[candidate.idx] *= 2.0;
                         boostCount++;
-                        if (candidate.prob > bestRhymeProb) {
-                            bestRhymeProb = candidate.prob;
-                            bestRhymeIdx = candidate.idx;
-                        }
+                    } else if (rhymeScore >= 0.2) {
+                        // Weak rhyme potential
+                        probs[candidate.idx] *= 1.5;
+                        boostCount++;
                     }
                 }
                 
-                console.log(`[RHYME] Boosted ${boostCount} tokens, found perfect rhyme: ${foundRhymingToken}`);
+                console.log(`[RHYME] Boosted ${boostCount} tokens (${perfectCount} perfect rhymes)`);
                 
                 // Re-normalize probabilities
                 const sum = probs.reduce((a, b) => a + b, 0);

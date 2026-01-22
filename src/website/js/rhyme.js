@@ -10,38 +10,65 @@
 
 /**
  * Get the ending sound pattern of a word/verse for rhyme matching.
- * Extracts the last vowel cluster and following consonants.
+ * For Italian poetry, rhymes are based on the ending from the last stressed vowel.
+ * Examples: "vita" -> "ita", "oscura" -> "ura", "selva" -> "elva"
  */
 function getEndingSound(text) {
-    // Clean and normalize the text
-    const cleaned = text.toLowerCase().trim();
+    // Clean: remove punctuation and normalize
+    let cleaned = text.toLowerCase().trim();
+    // Remove trailing punctuation
+    cleaned = cleaned.replace(/[.,;:!?'"»«\-–—]+$/g, '');
     if (cleaned.length === 0) return '';
     
-    // Italian vowels
+    // Get the last word
+    const words = cleaned.split(/\s+/);
+    const lastWord = words[words.length - 1] || '';
+    if (lastWord.length === 0) return '';
+    
+    // Italian vowels (including accented)
     const vowels = 'aeiouàèéìòóù';
     
-    // Find the last accented/stressed syllable pattern
-    // Look for the last 2-4 characters that form a rhyme pattern
-    let ending = '';
-    let foundVowel = false;
+    // For Italian rhymes, we want the ending from the last stressed syllable
+    // In most cases, this is the last 2-4 characters starting from a vowel
+    // Strategy: find the second-to-last vowel position, or use last 3-4 chars
     
-    for (let i = cleaned.length - 1; i >= 0 && ending.length < 5; i--) {
-        const char = cleaned[i];
-        if (char === ' ' || char === '\n') break;
-        
-        ending = char + ending;
-        
-        if (vowels.includes(char)) {
-            foundVowel = true;
-            // Continue to capture the consonant before the vowel
-            if (i > 0 && !vowels.includes(cleaned[i-1])) {
-                ending = cleaned[i-1] + ending;
-            }
-            break;
+    // Find positions of all vowels in the word
+    const vowelPositions = [];
+    for (let i = 0; i < lastWord.length; i++) {
+        if (vowels.includes(lastWord[i])) {
+            vowelPositions.push(i);
         }
     }
     
-    return foundVowel ? ending : cleaned.slice(-3);
+    if (vowelPositions.length === 0) {
+        // No vowels, just return last 3 chars
+        return lastWord.slice(-3);
+    }
+    
+    // For Italian rhymes, typically we want from the second-to-last vowel
+    // "vita" (i at 1, a at 3) -> from position 1 = "ita"
+    // "oscura" (o at 0, u at 3, a at 5) -> from position 3 = "ura"  
+    // "selva" (e at 1, a at 4) -> from position 1 = "elva"
+    
+    let startPos;
+    if (vowelPositions.length >= 2) {
+        // Start from the second-to-last vowel
+        startPos = vowelPositions[vowelPositions.length - 2];
+    } else {
+        // Only one vowel, start from it
+        startPos = vowelPositions[0];
+    }
+    
+    // Extract the ending
+    const ending = lastWord.slice(startPos);
+    
+    // Normalize accented vowels
+    return ending
+        .replace(/[àá]/g, 'a')
+        .replace(/[èé]/g, 'e')
+        .replace(/[ìí]/g, 'i')
+        .replace(/[òó]/g, 'o')
+        .replace(/[ùú]/g, 'u');
 }
 
 /**
@@ -163,6 +190,11 @@ function calculateRhymeScoreForToken(tokenId, targetEnding) {
     const tokenBytes = bpe_vocab[tokenId];
     const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
     
+    // Clean the token text
+    const cleanToken = tokenText.toLowerCase()
+        .replace(/[àá]/g, 'a').replace(/[èé]/g, 'e')
+        .replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    
     // Get current partial verse and last word
     const partialVerse = getCurrentPartialVerse();
     const currentLastWord = getLastWord(partialVerse);
@@ -170,11 +202,15 @@ function calculateRhymeScoreForToken(tokenId, targetEnding) {
     // If token contains newline, check if the word before newline rhymes
     if (tokenText.includes('\n')) {
         const beforeNewline = tokenText.split('\n')[0];
-        const potentialLastWord = getLastWord(currentLastWord + beforeNewline);
+        const potentialLastWord = currentLastWord + beforeNewline;
         const potentialEnding = getEndingSound(potentialLastWord);
         
         if (potentialEnding && doTheyRhyme(potentialEnding, targetEnding)) {
             return 1.0; // Perfect match - ends verse with rhyme
+        }
+        // Even if newline token doesn't rhyme perfectly, check partial match
+        if (potentialEnding && targetEnding.endsWith(potentialEnding.slice(-2))) {
+            return 0.3; // Weak match
         }
         return 0;
     }
@@ -183,8 +219,24 @@ function calculateRhymeScoreForToken(tokenId, targetEnding) {
     const potentialWord = currentLastWord + tokenText;
     const potentialEnding = getEndingSound(potentialWord);
     
+    // Check for rhyme match
     if (potentialEnding && doTheyRhyme(potentialEnding, targetEnding)) {
-        return 0.5; // Partial match - building towards rhyme
+        return 0.7; // Good match - building towards rhyme
+    }
+    
+    // Check if the token itself contains the rhyme pattern (could lead to rhyme)
+    // e.g., if targetEnding is "ita", and token contains "it", that's promising
+    const target2 = targetEnding.slice(-2);
+    const target3 = targetEnding.slice(-3);
+    
+    if (cleanToken.includes(target3)) {
+        return 0.6; // Token contains the rhyme pattern
+    }
+    if (cleanToken.includes(target2)) {
+        return 0.4; // Token contains part of the rhyme pattern
+    }
+    if (cleanToken.endsWith(target2.charAt(0))) {
+        return 0.2; // Token ends with start of rhyme
     }
     
     return 0;
