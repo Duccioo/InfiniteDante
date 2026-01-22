@@ -26,7 +26,7 @@ function getEndingSound(text) {
     if (lastWord.length === 0) return '';
     
     // Italian vowels (including accented)
-    const vowels = 'aeiouàèéìòóù';
+    const vowels = 'aeiouàèéìòóùïü';
     
     // For Italian rhymes, we want the ending from the last stressed syllable
     // In most cases, this is the last 2-4 characters starting from a vowel
@@ -66,9 +66,9 @@ function getEndingSound(text) {
     return ending
         .replace(/[àá]/g, 'a')
         .replace(/[èé]/g, 'e')
-        .replace(/[ìí]/g, 'i')
+        .replace(/[ìíï]/g, 'i')
         .replace(/[òó]/g, 'o')
-        .replace(/[ùú]/g, 'u');
+        .replace(/[ùúü]/g, 'u');
 }
 
 /**
@@ -82,8 +82,8 @@ function doTheyRhyme(ending1, ending2) {
     if (ending1.length < 2 || ending2.length < 2) return false;
     
     // Normalize endings
-    const e1 = ending1.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
-    const e2 = ending2.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    const e1 = ending1.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
+    const e2 = ending2.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
     
     // Check for exact match
     if (e1 === e2) return true;
@@ -111,7 +111,9 @@ function findRhymingTokens(targetEnding, probs) {
     const rhymingTokens = [];
     
     // Search through all tokens in vocabulary
-    for (let tokenId = 0; tokenId < Object.keys(bpe_vocab).length; tokenId++) {
+    // Use bpe_vocab.length to ensure we check all indices, even if sparse
+    const vocabLen = bpe_vocab.length;
+    for (let tokenId = 0; tokenId < vocabLen; tokenId++) {
         if (!bpe_vocab[tokenId]) continue;
         
         const tokenBytes = bpe_vocab[tokenId];
@@ -186,8 +188,8 @@ function getRhymeScore(tokenId, targetEnding) {
     if (!tokenEnding || !targetEnding) return 0;
     
     // Normalize for comparison
-    const t = tokenEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
-    const target = targetEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+    const t = tokenEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
+    const target = targetEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
     
     // Exact match
     if (t === target) return 1.0;
@@ -251,7 +253,7 @@ function calculateRhymeScoreForToken(tokenId, targetEnding) {
     // Clean the token text
     const cleanToken = tokenText.toLowerCase()
         .replace(/[àá]/g, 'a').replace(/[èé]/g, 'e')
-        .replace(/[ìí]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùú]/g, 'u');
+        .replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
     
     // Get current partial verse and last word
     const partialVerse = getCurrentPartialVerse();

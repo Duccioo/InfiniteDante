@@ -115,7 +115,7 @@ async function generateNext(context) {
                             probs[token.tokenId] *= 50.0;
                         }
                     } else {
-                         if (verseLength === 30) console.log(`[RHYME] No tokens found for "${targetEnding}"`);
+                         if (verseLength >= 30) console.log(`[RHYME] No tokens found for "${targetEnding}" (vocab check: ${bpe_vocab ? bpe_vocab.length : 'null'})`);
                     }
                 }
             }
