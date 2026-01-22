@@ -46,8 +46,12 @@ async function generateNext(context) {
     if (danteRhymeMode && isNearVerseEnd()) {
         const rhymeTarget = getRhymeTarget(currentVerseNumber);
         
+        // Debug logging
+        console.log(`[RHYME] currentVerse=${currentVerseNumber}, rhymeTarget=${rhymeTarget}, verseEndings.length=${verseEndings.length}`);
+        
         if (rhymeTarget >= 0 && rhymeTarget < verseEndings.length) {
             const targetEnding = verseEndings[rhymeTarget];
+            console.log(`[RHYME] Target ending: "${targetEnding}"`);
             
             if (targetEnding) {
                 // Get top candidates
@@ -60,6 +64,7 @@ async function generateNext(context) {
                 let foundRhymingToken = false;
                 let bestRhymeIdx = -1;
                 let bestRhymeProb = 0;
+                let boostCount = 0;
                 
                 for (const candidate of topCandidates) {
                     const rhymeScore = calculateRhymeScoreForToken(candidate.idx, targetEnding);
@@ -68,15 +73,19 @@ async function generateNext(context) {
                         // Token ends verse with perfect rhyme - boost significantly
                         probs[candidate.idx] *= 5.0;
                         foundRhymingToken = true;
+                        boostCount++;
                     } else if (rhymeScore >= 0.5) {
                         // Token contributes to potential rhyme - moderate boost
                         probs[candidate.idx] *= 2.0;
+                        boostCount++;
                         if (candidate.prob > bestRhymeProb) {
                             bestRhymeProb = candidate.prob;
                             bestRhymeIdx = candidate.idx;
                         }
                     }
                 }
+                
+                console.log(`[RHYME] Boosted ${boostCount} tokens, found perfect rhyme: ${foundRhymingToken}`);
                 
                 // Re-normalize probabilities
                 const sum = probs.reduce((a, b) => a + b, 0);

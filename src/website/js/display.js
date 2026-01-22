@@ -219,9 +219,15 @@ async function startGeneration() {
 
     // Initialize with seed text if empty
     if (generatedText.length === 0) {
-        generatedText = 'Nel mezzo del cammin di nostra vita ';
+        // Start with the first verse of the Divine Comedy, including newline
+        // This registers as verse 0, so verse 2 (3rd line) will rhyme with "vita"
+        generatedText = 'Nel mezzo del cammin di nostra vita\n';
         textOutput.textContent = generatedText;
         charsSinceLastCanto = generatedText.length;
+        // Reset rhyme tracking and register the first verse ending
+        verseEndings = [getEndingSound('Nel mezzo del cammin di nostra vita')]; // "ita" from "vita"
+        currentVerseNumber = 1; // Next verse to be generated is verse 1
+        console.log('[RHYME] Initialized with verse 0 ending:', verseEndings[0]);
     }
 
     // Convert current text to tokens
@@ -243,8 +249,11 @@ async function startGeneration() {
             // Track verse endings for Dante rhyme mode
             if (danteRhymeMode && char.includes('\n')) {
                 // Extract the ending of the verse that just ended
-                // generatedText still contains the text BEFORE this newline
-                const lines = generatedText.split('\n');
+                // The token 'char' might contain text BEFORE the newline (e.g., "vita\n")
+                // We need to combine generatedText + the part of char before \n
+                const partBeforeNewline = char.split('\n')[0];
+                const fullTextBeforeNewline = generatedText + partBeforeNewline;
+                const lines = fullTextBeforeNewline.split('\n');
                 // Get the last non-empty line (the verse that just ended)
                 const lastVerse = lines.filter(l => l.trim().length > 0).pop() || '';
                 const ending = getEndingSound(lastVerse);
