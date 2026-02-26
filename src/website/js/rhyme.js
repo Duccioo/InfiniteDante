@@ -108,6 +108,17 @@ function doTheyRhyme(ending1, ending2) {
 function findRhymingTokens(targetEnding, probs) {
     if (!targetEnding || !bpe_vocab) return [];
     
+    // Create a set of recently used words to avoid repeating the exact same rhyming word
+    const usedWords = new Set();
+    if (typeof generatedText === 'string') {
+        // Look at the last ~1000 characters to prevent recent repetition
+        const recentText = generatedText.slice(-1000).toLowerCase();
+        const words = recentText.replace(/[.,;:!?'"»«\-–—\n]+/g, ' ').split(/\s+/);
+        for (const w of words) {
+            if (w.length > 2) usedWords.add(w);
+        }
+    }
+    
     const rhymingTokens = [];
     
     // Search through all tokens in vocabulary
@@ -126,6 +137,9 @@ function findRhymingTokens(targetEnding, probs) {
         
         // Skip short tokens or tokens that are just punctuation
         if (cleanText.length < 2) continue;
+        
+        // Skip if this exact word was already used recently
+        if (usedWords.has(cleanText.toLowerCase())) continue;
         
         // Get the ending of the token
         const tokenEnding = getEndingSound(cleanText);
@@ -160,17 +174,18 @@ function getRhymeTarget(verseIndex) {
     // Verse 1 (B): free  
     // Verse 2 (A): rhymes with verse 0
     // Verse 3 (B): rhymes with verse 1
-    // Verse 4 (C): rhymes with verse 3 (the B of previous tercet becomes A of next)
-    // Verse 5 (B): rhymes with verse 4
+    // Verse 4 (C): free (new rhyme)
+    // Verse 5 (B): rhymes with verse 3
+    // Verse 6 (C): rhymes with verse 4
+    // Verse 7 (D): free (new rhyme)
     // etc.
     
     if (verseIndex < 2) return -1; // First two verses are free
     
-    // Pattern repeats every 3 verses after the first tercet
-    // For verse n >= 2:
-    // If (n % 3) == 2: rhyme with n-2 (A rhymes with A)
-    // If (n % 3) == 0: rhyme with n-2 (continuing chain)
-    // If (n % 3) == 1: rhyme with n-2 (B rhymes with B)
+    const pos = verseIndex % 3;
+    if (pos === 1) {
+        return -1; // The middle verse of a tercet introduces a new rhyme
+    }
     
     return verseIndex - 2;
 }

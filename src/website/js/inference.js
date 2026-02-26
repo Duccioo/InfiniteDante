@@ -57,7 +57,8 @@ async function generateNext(context) {
                     const bytes = bpe_vocab[id];
                     const text = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(bytes));
                     if (text.includes('\n')) {
-                        probs[id] *= 1000.0;
+                        // Ensure it has a non-zero base probability to scale
+                        probs[id] = (probs[id] || 0.001) * 1000.0;
                     }
                 }
             }
@@ -112,7 +113,8 @@ async function generateNext(context) {
                         
                         for (const token of rhymingTokens.slice(0, 50)) {
                              // Strong boost
-                            probs[token.tokenId] *= 50.0;
+                            // Ensure probability is not zero due to top-p filtering
+                            probs[token.tokenId] = (probs[token.tokenId] || 0.0001) * 50.0;
                         }
                     } else {
                          if (verseLength >= 30) console.log(`[RHYME] No tokens found for "${targetEnding}" (vocab check: ${bpe_vocab ? bpe_vocab.length : 'null'})`);
