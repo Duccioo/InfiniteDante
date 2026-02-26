@@ -1,5 +1,7 @@
 # 🔥 Infinite Dante
 
+<img src="cover.png" alt="Infinite Dante Cover" style="border-radius: 10px;">
+
 A micro-LLM (~8.2M parameters) trained on Dante Alighieri's works and medieval Italian literature that runs **entirely in the browser** to generate infinite Dante-style text.
 
 ![ONNX Runtime](https://img.shields.io/badge/Runtime-ONNX%20Web-blue)
