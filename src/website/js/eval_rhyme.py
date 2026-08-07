@@ -141,57 +141,60 @@ def generate_canto(mode="FORCED", target_verses=9, prompt="Nel mezzo del cammin 
 
         # Check if we should force rhyme ending
         current_text = decode(tokens)
-        current_partial_verse = current_text.split("\n")[-1]
+        lines = current_text.split("\n")
+        current_partial_verse = lines[-1]
 
-        if mode == "FORCED" and target_rhyme_idx >= 0 and target_rhyme_idx < len(verse_endings) and len(current_partial_verse) >= 25:
-            target_suffix = verse_endings[target_rhyme_idx]
-            candidates = RIMARIO.get(target_suffix, [])
-            available = [w for w in candidates if w not in used_rhyme_words]
-            if not available and candidates:
-                available = candidates
+        if mode == "FORCED" and target_rhyme_idx >= 0 and target_rhyme_idx < len(verse_endings):
+            if len(current_partial_verse) >= 22:
+                target_suffix = verse_endings[target_rhyme_idx]
+                candidates = RIMARIO.get(target_suffix, [])
+                available = [w for w in candidates if w not in used_rhyme_words]
+                if not available and candidates:
+                    available = candidates
 
-            if available:
-                # Pick candidate word with best syllable fit & highest model score
-                best_word = None
-                best_tokens = None
-                best_score = -float("inf")
+                if available:
+                    # Pick candidate word with best syllable fit & highest model score
+                    best_word = None
+                    best_tokens = None
+                    best_score = -float("inf")
 
-                for word in available[:15]:
-                    cand_tokens = encode(" " + word + "\n")
-                    cand_line = current_partial_verse + " " + word
-                    s_count = syllable_counter.count_verse_syllables(cand_line)
-                    meter_penalty = abs(s_count - 11) * 2.0
-                    
-                    # Quick log-prob evaluation
-                    logits = run_inference(tokens + cand_tokens[:-1])
-                    log_p = math.log(softmax(logits)[cand_tokens[-1]] + 1e-10) - meter_penalty
+                    for word in available[:20]:
+                        cand_tokens = encode(" " + word + "\n")
+                        cand_line = current_partial_verse + " " + word
+                        s_count = syllable_counter.count_verse_syllables(cand_line)
+                        meter_penalty = abs(s_count - 11) * 2.0
+                        
+                        logits = run_inference(tokens + cand_tokens[:-1])
+                        log_p = math.log(softmax(logits)[cand_tokens[-1]] + 1e-10) - meter_penalty
 
-                    if log_p > best_score:
-                        best_score = log_p
-                        best_word = word
-                        best_tokens = cand_tokens
+                        if log_p > best_score:
+                            best_score = log_p
+                            best_word = word
+                            best_tokens = cand_tokens
 
-                if best_word:
-                    tokens.extend(best_tokens)
-                    used_rhyme_words.add(best_word)
-                    full_gen = decode(tokens)
-                    verses = [v for v in full_gen.strip().split("\n") if v.strip()]
-                    if len(verses) < len(verse_endings):
-                        verse_endings = verse_endings[:len(verses)]
-                    while len(verse_endings) < len(verses):
-                        verse_endings.append(detector.get_rhyme_suffix(verses[len(verse_endings)]))
-                    continue
+                    if best_word:
+                        tokens.extend(best_tokens)
+                        used_rhyme_words.add(best_word)
+                        full_gen = decode(tokens)
+                        verses = [v for v in full_gen.strip().split("\n") if v.strip()]
+                        verse_endings = [detector.get_rhyme_suffix(v) for v in verses]
+                        continue
 
         # Regular token sampling
         logits = run_inference(tokens)
         probs = softmax(logits)
+
+        # Suppress newline (token 10) on rhymed target verses until FORCED mode triggers
+        if mode == "FORCED" and target_rhyme_idx >= 0 and len(current_partial_verse) < 22:
+            probs[10] = 0.0
+            probs /= np.sum(probs)
+
         next_token = sample_top_p(probs)
         tokens.append(next_token)
 
         full_gen = decode(tokens)
         verses = [v for v in full_gen.strip().split("\n") if v.strip()]
-        while len(verse_endings) < len(verses):
-            verse_endings.append(detector.get_rhyme_suffix(verses[len(verse_endings)]))
+        verse_endings = [detector.get_rhyme_suffix(v) for v in verses]
 
     full_text = decode(tokens)
     final_verses = [v.strip() for v in full_text.strip().split("\n") if v.strip()][:target_verses]
