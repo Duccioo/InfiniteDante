@@ -44,7 +44,12 @@ async function initialize() {
         // Enable controls
         startBtn.disabled = false;
         document.getElementById('benchmark-btn').disabled = false;
-        statusEl.textContent = 'READY — PRESS START';
+        statusEl.textContent = 'LOADING RIMARIO...';
+
+        // Load rimario (non-blocking for core functionality)
+        await loadRimario('../../model/rimario.json');
+
+        statusEl.textContent = 'READY \u2014 PRESS START';
         statusEl.classList.remove('loading');
 
     } catch (error) {
@@ -104,19 +109,37 @@ function setupEventListeners() {
         showContextWindow = !showContextWindow;
         contextToggleBtn.classList.toggle('active', showContextWindow);
         contextWindowDisplay.classList.toggle('visible', showContextWindow);
-        contextToggleBtn.textContent = showContextWindow ? '⬛ hide context' : '⬚ show context';
+        contextToggleBtn.textContent = showContextWindow ? '\u2B1B hide context' : '\u2B1A show context';
     });
 
     // Dante Rhyme Mode toggle
     const rhymeToggleBtn = document.getElementById('rhyme-toggle-btn');
     const rhymeStatus = document.getElementById('rhyme-status');
-    
+    const updateRhymeToggle = () => {
+        const active = danteRhymeMode !== RHYME_MODE_OFF;
+        rhymeToggleBtn.classList.toggle('active', active);
+        const forced = danteRhymeMode === RHYME_MODE_FORCED;
+        const strict = danteRhymeMode === RHYME_MODE_STRICT;
+        rhymeStatus.textContent = forced ? 'FORCED (RIMARIO)' :
+            strict ? 'STRICT (BEST-EFFORT)' : danteRhymeMode;
+        rhymeToggleBtn.textContent = forced ? '\uD83C\uDFAD terza rima FORCED (rimario)' :
+            strict ? '\uD83C\uDFAD terza rima STRICT (best-effort)' :
+            `\uD83C\uDFAD terza rima ${danteRhymeMode} (ABA BCB)`;
+        rhymeToggleBtn.title = forced ?
+            'Forces a rhyme word from the Italian rimario dictionary. Guarantees rhyme but may sound artificial.' :
+            strict ?
+            'Bounded exact-rhyme search; normal sampling is used if it finds no completion.' :
+            'Cycle SOFT, STRICT, FORCED, and OFF terza-rima modes.';
+    };
+
     rhymeToggleBtn.addEventListener('click', () => {
-        danteRhymeMode = !danteRhymeMode;
-        rhymeToggleBtn.classList.toggle('active', danteRhymeMode);
-        rhymeStatus.textContent = danteRhymeMode ? 'ON' : 'OFF';
-        rhymeToggleBtn.textContent = danteRhymeMode ? '🎭 terza rima (ABA BCB)' : '🎭 terza rima OFF';
+        danteRhymeMode = danteRhymeMode === RHYME_MODE_SOFT ? RHYME_MODE_STRICT :
+            danteRhymeMode === RHYME_MODE_STRICT ? RHYME_MODE_FORCED :
+            danteRhymeMode === RHYME_MODE_FORCED ? RHYME_MODE_OFF : RHYME_MODE_SOFT;
+        cancelPendingRhymeCompletion();
+        updateRhymeToggle();
     });
+    updateRhymeToggle();
 
     // Temperature slider
     temperatureSlider.addEventListener('input', (e) => {

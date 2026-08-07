@@ -3,12 +3,14 @@ Italian Metric Utilities
 ========================
 Tools for evaluating Dante's terzina incatenata metric:
 - Syllable counting with sinalefe rules
-- Rhyme detection for ABA BCB CDC scheme
+- Rhyme detection for ABA BCB CDC scheme (stress-based)
 - Terzina scoring for RL reward computation
 """
 
+import json
+import os
 import re
-from typing import List, Tuple, Optional
+from typing import Dict, List, Optional, Tuple
 
 
 # Italian vowels (including accented)
@@ -142,68 +144,135 @@ class ItalianSyllableCounter:
         return is_valid, count
 
 
+# Common Italian diphthongs for syllable-aware stress detection
+_DIPHTHONGS = {
+    "ia", "ie", "io", "iu",
+    "ua", "ue", "ui", "uo",
+    "ai", "ei", "oi", "au", "eu",
+}
+
+_ACCENTED_MAP = {
+    "à": "a", "è": "e", "é": "e", "ì": "i", "í": "i",
+    "ò": "o", "ó": "o", "ù": "u", "ú": "u",
+}
+
+
+def _split_syllable_nuclei(word: str) -> list:
+    """
+    Return a list of (start_pos, end_pos) for each syllable nucleus.
+    Diphthongs count as one nucleus; accented hiatus as two.
+    """
+    nuclei = []
+    plain = "".join(_ACCENTED_MAP.get(c, c) for c in word)
+    i = 0
+    while i < len(plain):
+        if plain[i] in "aeiou":
+            start = i
+            while (i + 1 < len(plain) and plain[i + 1] in "aeiou"
+                   and plain[i:i+2] in _DIPHTHONGS
+                   and word[i] not in ACCENTED_VOWELS
+                   and word[i + 1] not in ACCENTED_VOWELS):
+                i += 1
+            nuclei.append((start, i))
+            i += 1
+        else:
+            i += 1
+    return nuclei
+
+
+def get_stressed_suffix(word: str) -> str:
+    """
+    Extract the rhyme suffix starting from the stressed vowel.
+
+    Uses explicit accent if present, otherwise assumes paroxytone
+    stress (penultimate syllable nucleus, diphthong-aware).
+    Returns the suffix with accents normalized to plain vowels.
+    """
+    word = word.lower().strip()
+    word = re.sub(r"[^a-zàèéìíòóùú]", "", word)
+    if len(word) < 2:
+        return word
+
+    # 1. Explicit accent mark
+    for i, ch in enumerate(word):
+        if ch in ACCENTED_VOWELS:
+            return "".join(_ACCENTED_MAP.get(c, c) for c in word[i:])
+
+    # 2. Penultimate syllable nucleus (diphthong-aware)
+    nuclei = _split_syllable_nuclei(word)
+    if not nuclei:
+        return word[-3:] if len(word) >= 3 else word
+
+    stress_start = nuclei[-2][0] if len(nuclei) >= 2 else nuclei[0][0]
+    return word[stress_start:]
+
+
 class RhymeDetector:
     """
     Detect rhymes in Italian poetry.
 
-    Extracts the rhyming suffix (from last stressed vowel to end)
-    and compares verses for rhyme matching.
+    Compares the stressed suffix (from the tonic vowel to end of word)
+    rather than just the last N letters. Optionally loads rimario.json
+    for known word→suffix mappings.
     """
 
-    def __init__(self, min_suffix_len: int = 2):
-        self.min_suffix_len = min_suffix_len
+    def __init__(self, rimario_path: Optional[str] = None):
+        self._word_suffix_cache: Dict[str, str] = {}
+        self._rimario_loaded = False
+
+        # Try to load rimario.json
+        if rimario_path is None:
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(
+                os.path.abspath(__file__))))
+            rimario_path = os.path.join(base_dir, "model", "rimario.json")
+
+        if os.path.exists(rimario_path):
+            try:
+                with open(rimario_path, "r", encoding="utf-8") as f:
+                    rimario = json.load(f)
+                # Build inverse map: word -> suffix
+                for suffix, words in rimario.items():
+                    for w in words:
+                        self._word_suffix_cache[w.lower()] = suffix
+                self._rimario_loaded = True
+            except (json.JSONDecodeError, IOError):
+                pass  # Fall back to heuristic
 
     def get_rhyme_suffix(self, verse: str) -> str:
         """
         Extract the rhyming suffix of a verse.
-        This is approximately from the last stressed vowel to the end.
+        The suffix starts at the stressed (tonic) vowel of the last word.
         """
-        # Get last word
         words = re.findall(r"[\w'àèéìíòóùú]+", verse.lower())
         if not words:
             return ""
 
-        last_word = words[-1]
+        last_word = re.sub(r"[^a-zàèéìíòóùú]", "", words[-1])
+        if not last_word:
+            return ""
 
-        # Find last accented vowel, or guess stress position
-        # In Italian, stress is usually on penultimate syllable
-        suffix = self._extract_suffix(last_word)
+        # Check rimario cache first
+        if last_word in self._word_suffix_cache:
+            return self._word_suffix_cache[last_word]
 
-        return suffix
+        # Fall back to heuristic
+        return get_stressed_suffix(last_word)
 
-    def _extract_suffix(self, word: str) -> str:
-        """Extract rhyming suffix from a word."""
-        word = word.lower().strip()
-        if len(word) < 2:
-            return word
-
-        # Look for explicit accent
-        for i, char in enumerate(word):
-            if char in ACCENTED_VOWELS:
-                return word[i:]
-
-        # No explicit accent: find last vowel cluster
-        # Italian words usually stress penultimate syllable
-        vowel_positions = [i for i, c in enumerate(word) if c in VOWELS]
-
-        if len(vowel_positions) >= 2:
-            # Take from penultimate vowel
-            return word[vowel_positions[-2] :]
-        elif vowel_positions:
-            return word[vowel_positions[-1] :]
-        else:
-            return word[-3:] if len(word) >= 3 else word
-
-    def _get_vowels(self, text: str) -> str:
+    @staticmethod
+    def _get_vowels(text: str) -> str:
         """Extract only vowels from text."""
-        return "".join([c for c in text if c in VOWELS or c in ACCENTED_VOWELS])
+        return "".join(
+            _ACCENTED_MAP.get(c, c)
+            for c in text
+            if c in VOWELS or c in ACCENTED_VOWELS
+        )
 
     def score_rhyme(self, verse1: str, verse2: str) -> float:
         """
         Score how well two verses rhyme.
         Returns:
-            1.0 if strict rhyme (suffix match)
-            0.6 if assonance (vowels match)
+            1.0 if strict rhyme (full stressed suffix match)
+            0.6 if assonance (stressed vowels match)
             0.0 otherwise
         """
         suffix1 = self.get_rhyme_suffix(verse1)
@@ -212,22 +281,16 @@ class RhymeDetector:
         if not suffix1 or not suffix2:
             return 0.0
 
-        min_len = min(len(suffix1), len(suffix2), self.min_suffix_len)
-        s1_end = suffix1[-min_len:]
-        s2_end = suffix2[-min_len:]
-
-        # Strict rhyme
-        if s1_end == s2_end:
+        # Strict rhyme: full suffix match from stressed vowel
+        if suffix1 == suffix2:
             return 1.0
 
-        # Assonance check (vowels only)
+        # Assonance check: stressed vowels match
         v1 = self._get_vowels(suffix1)
         v2 = self._get_vowels(suffix2)
-
-        # Compare last few vowels
         min_vowels = min(len(v1), len(v2), 2)
         if min_vowels > 0 and v1[-min_vowels:] == v2[-min_vowels:]:
-            return 0.6  # Partial credit for assonance
+            return 0.6
 
         return 0.0
 
@@ -257,10 +320,9 @@ class RhymeDetector:
         for verse in verses:
             suffix = self.get_rhyme_suffix(verse)
 
-            # Check if this suffix matches any existing
             matched = False
             for existing_suffix, letter in suffix_to_letter.items():
-                if self._suffixes_rhyme(suffix, existing_suffix):
+                if suffix and existing_suffix and suffix == existing_suffix:
                     scheme.append(letter)
                     matched = True
                     break
@@ -271,13 +333,6 @@ class RhymeDetector:
                 current_letter = chr(ord(current_letter) + 1)
 
         return scheme
-
-    def _suffixes_rhyme(self, s1: str, s2: str) -> bool:
-        """Check if two suffixes rhyme."""
-        if not s1 or not s2:
-            return False
-        min_len = min(len(s1), len(s2), self.min_suffix_len)
-        return s1[-min_len:] == s2[-min_len:]
 
 
 class TerzinaScorer:
@@ -594,8 +649,8 @@ def count_syllables(text: str) -> int:
 
 
 def check_rhyme(verse1: str, verse2: str) -> bool:
-    """Quick rhyme check between two verses."""
-    return RhymeDetector().rhymes_with(verse1, verse2)
+    """Quick rhyme check between two verses (uses heuristic stress)."""
+    return RhymeDetector(rimario_path="").rhymes_with(verse1, verse2)
 
 
 def score_terzina(text: str) -> float:
@@ -620,14 +675,21 @@ if __name__ == "__main__":
     for verse in test_verses:
         count = sc.count_verse_syllables(verse)
         is_valid, _ = sc.is_endecasillabo(verse)
-        print(f"  '{verse[:40]}...' -> {count} syllables {'✓' if is_valid else '✗'}")
+        print(f"  '{verse[:40]}...' -> {count} syllables {'[OK]' if is_valid else '[--]'}")
 
     # Test rhyme detection
     rd = RhymeDetector()
-    print("\nRhyme Detection:")
+    print("\nRhyme Detection (stress-based):")
     print(f"  'vita' suffix: {rd.get_rhyme_suffix('vita')}")
     print(f"  'smarrita' suffix: {rd.get_rhyme_suffix('smarrita')}")
     print(f"  'vita' rhymes with 'smarrita': {rd.rhymes_with('vita', 'smarrita')}")
+    print(f"  'canto' suffix: {rd.get_rhyme_suffix('canto')}")
+    print(f"  'vento' suffix: {rd.get_rhyme_suffix('vento')}")
+    print(f"  'canto' rhymes with 'vento': {rd.rhymes_with('canto', 'vento')}")
+    assert not rd.rhymes_with('canto', 'vento', strict=True), \
+        "canto/vento must NOT be a strict rhyme!"
+    assert rd.rhymes_with('vita', 'smarrita', strict=True), \
+        "vita/smarrita MUST be a strict rhyme!"
 
     # Test terzina scoring
     ts = TerzinaScorer()

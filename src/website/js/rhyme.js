@@ -1,318 +1,328 @@
 /**
  * rhyme.js
- * ========
- * Dante terza rima (ABA BCB CDC...) rhyme logic.
+ * =========
+ * Dante terza-rima helpers with rimario-based rhyme validation.
+ *
+ * Key improvement over the previous version: rhyme suffixes are extracted
+ * from the stressed (tonic) vowel — not the penultimate vowel character —
+ * using syllable-aware nucleus splitting.  When rimario.json is loaded,
+ * known words get their exact suffix from the dictionary.
  */
 
-// ============================================================================
-// Rhyme Functions
-// ============================================================================
+// Italian diphthongs (count as one syllable nucleus)
+const DIPHTHONGS_SET = new Set([
+    'ia', 'ie', 'io', 'iu',
+    'ua', 'ue', 'ui', 'uo',
+    'ai', 'ei', 'oi', 'au', 'eu',
+]);
+
+const ACCENTED_MAP = {
+    'à': 'a', 'è': 'e', 'é': 'e', 'ì': 'i', 'í': 'i',
+    'ò': 'o', 'ó': 'o', 'ù': 'u', 'ú': 'u',
+};
+const ACCENTED_VOWELS_SET = new Set(Object.keys(ACCENTED_MAP));
+const ALL_VOWELS = 'aeiouàèéìíòóùú';
+
+function normalizeItalian(text) {
+    return String(text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
 
 /**
- * Get the ending sound pattern of a word/verse for rhyme matching.
- * For Italian poetry, rhymes are based on the ending from the last stressed vowel.
- * Examples: "vita" -> "ita", "oscura" -> "ura", "selva" -> "elva"
+ * Split a word into syllable nuclei (vowels/diphthongs).
+ * Each nucleus is [startPos, endPos].  Diphthongs merge into one nucleus;
+ * accented vowels force a hiatus.
+ */
+function splitSyllableNuclei(word) {
+    const plain = Array.from(word).map(c => ACCENTED_MAP[c] || c).join('');
+    const nuclei = [];
+    let i = 0;
+    while (i < plain.length) {
+        if (ALL_VOWELS.includes(plain[i])) {
+            const start = i;
+            while (i + 1 < plain.length &&
+                ALL_VOWELS.includes(plain[i + 1]) &&
+                DIPHTHONGS_SET.has(plain[i] + plain[i + 1]) &&
+                !ACCENTED_VOWELS_SET.has(word[i]) &&
+                !ACCENTED_VOWELS_SET.has(word[i + 1])) {
+                i++;
+            }
+            nuclei.push([start, i]);
+            i++;
+        } else {
+            i++;
+        }
+    }
+    return nuclei;
+}
+
+/**
+ * Extract the rhyme suffix from the stressed vowel to end of word.
+ *
+ * 1. If the word contains an accented vowel, stress is there.
+ * 2. Otherwise assume paroxytone (stress on penultimate syllable nucleus).
+ * 3. Accents are normalized to plain vowels in the returned suffix.
+ */
+function getStressedSuffix(word) {
+    word = String(word || '').toLowerCase().replace(/[^a-zàèéìíòóùú]/g, '');
+    if (word.length < 2) return ACCENTED_MAP[word] || word;
+
+    // 1. Explicit accent
+    for (let i = 0; i < word.length; i++) {
+        if (ACCENTED_VOWELS_SET.has(word[i])) {
+            let suffix = '';
+            for (let j = i; j < word.length; j++) {
+                suffix += ACCENTED_MAP[word[j]] || word[j];
+            }
+            return suffix;
+        }
+    }
+
+    // 2. Penultimate syllable nucleus (diphthong-aware)
+    const nuclei = splitSyllableNuclei(word);
+    if (!nuclei.length) return word.slice(-3);
+
+    const stressStart = nuclei.length >= 2 ? nuclei[nuclei.length - 2][0] : nuclei[0][0];
+    return word.slice(stressStart);
+}
+
+/**
+ * Return the rhyme suffix of the final word in a verse.
+ * If the rimario is loaded (rimarioIndex), uses the known suffix;
+ * otherwise falls back to the heuristic.
  */
 function getEndingSound(text) {
-    // Clean: remove punctuation and normalize
-    let cleaned = text.toLowerCase().trim();
-    // Remove trailing punctuation
-    cleaned = cleaned.replace(/[.,;:!?'"»«\-–—]+$/g, '');
-    if (cleaned.length === 0) return '';
-    
-    // Get the last word
-    const words = cleaned.split(/\s+/);
-    const lastWord = words[words.length - 1] || '';
-    if (lastWord.length === 0) return '';
-    
-    // Italian vowels (including accented)
-    const vowels = 'aeiouàèéìòóùïü';
-    
-    // For Italian rhymes, we want the ending from the last stressed syllable
-    // In most cases, this is the last 2-4 characters starting from a vowel
-    // Strategy: find the second-to-last vowel position, or use last 3-4 chars
-    
-    // Find positions of all vowels in the word
-    const vowelPositions = [];
-    for (let i = 0; i < lastWord.length; i++) {
-        if (vowels.includes(lastWord[i])) {
-            vowelPositions.push(i);
-        }
+    const cleaned = String(text || '').toLowerCase().trim().replace(/[^a-zàèéìíòóùú ]+$/g, '');
+    const match = cleaned.match(/[a-zàèéìíòóùú]+$/);
+    const lastWord = match ? match[0] : '';
+    if (!lastWord) return '';
+
+    // Check rimario index first
+    if (typeof rimarioIndex !== 'undefined' && rimarioIndex instanceof Map && rimarioIndex.size > 0) {
+        const known = rimarioIndex.get(lastWord);
+        if (known) return known;
     }
-    
-    if (vowelPositions.length === 0) {
-        // No vowels, just return last 3 chars
-        return lastWord.slice(-3);
-    }
-    
-    // For Italian rhymes, typically we want from the second-to-last vowel
-    // "vita" (i at 1, a at 3) -> from position 1 = "ita"
-    // "oscura" (o at 0, u at 3, a at 5) -> from position 3 = "ura"  
-    // "selva" (e at 1, a at 4) -> from position 1 = "elva"
-    
-    let startPos;
-    if (vowelPositions.length >= 2) {
-        // Start from the second-to-last vowel
-        startPos = vowelPositions[vowelPositions.length - 2];
-    } else {
-        // Only one vowel, start from it
-        startPos = vowelPositions[0];
-    }
-    
-    // Extract the ending
-    const ending = lastWord.slice(startPos);
-    
-    // Normalize accented vowels
-    return ending
-        .replace(/[àá]/g, 'a')
-        .replace(/[èé]/g, 'e')
-        .replace(/[ìíï]/g, 'i')
-        .replace(/[òó]/g, 'o')
-        .replace(/[ùúü]/g, 'u');
+
+    return getStressedSuffix(lastWord);
 }
 
 /**
- * Check if two endings rhyme (Italian style).
- * Requires at least 2 characters to match at the end.
+ * Strict rhyme predicate: complete stressed suffixes must match.
  */
 function doTheyRhyme(ending1, ending2) {
-    if (!ending1 || !ending2) return false;
-    
-    // Both endings must be at least 2 characters for a valid rhyme
-    if (ending1.length < 2 || ending2.length < 2) return false;
-    
-    // Normalize endings
-    const e1 = ending1.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
-    const e2 = ending2.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
-    
-    // Check for exact match
-    if (e1 === e2) return true;
-    
-    // Check suffix match (only if suffix is at least 2 chars)
-    if (e1.length >= 2 && e2.endsWith(e1)) return true;
-    if (e2.length >= 2 && e1.endsWith(e2)) return true;
-    
-    // Check last 2-3 characters match (minimum 2 required)
-    const matchLen = Math.min(e1.length, e2.length, 3);
-    if (matchLen >= 2) {
-        return e1.slice(-matchLen) === e2.slice(-matchLen);
-    }
-    
-    return false;
+    const first = normalizeItalian(ending1).replace(/[^a-z]+/g, '');
+    const second = normalizeItalian(ending2).replace(/[^a-z]+/g, '');
+    return first.length >= 2 && first === second;
+}
+
+/** A strong search-progress signal; it is not a completed-line acceptance. */
+function getExactEndingProgressScore(line, targetEnding) {
+    return doTheyRhyme(getEndingSound(line), targetEnding) ? 1 : 0;
 }
 
 /**
- * Find all tokens in vocabulary that would create a rhyme with target.
- * Returns array of {tokenId, text, ending} sorted by how well they match.
+ * A weaker signal for SOFT ranking only; never use this to assert a rhyme.
  */
-function findRhymingTokens(targetEnding, probs) {
-    if (!targetEnding || !bpe_vocab) return [];
-    
-    // Create a set of recently used words to avoid repeating the exact same rhyming word
-    const usedWords = new Set();
-    if (typeof generatedText === 'string') {
-        // Look at the last ~1000 characters to prevent recent repetition
-        const recentText = generatedText.slice(-1000).toLowerCase();
-        const words = recentText.replace(/[.,;:!?'"»«\-–—\n]+/g, ' ').split(/\s+/);
-        for (const w of words) {
-            if (w.length > 2) usedWords.add(w);
-        }
+function getAssonanceScore(ending1, ending2) {
+    const first = normalizeItalian(ending1).replace(/[^a-z]/g, '');
+    const second = normalizeItalian(ending2).replace(/[^a-z]/g, '');
+    if (!first || !second) return 0;
+    if (first === second) return 1;
+
+    const vowels = value => (value.match(/[aeiou]/g) || []).join('');
+    const firstVowels = vowels(first);
+    const secondVowels = vowels(second);
+    if (firstVowels.length >= 2 && firstVowels === secondVowels) return 0.45;
+
+    let suffix = 0;
+    while (suffix < Math.min(first.length, second.length) &&
+        first[first.length - suffix - 1] === second[second.length - suffix - 1]) {
+        suffix++;
     }
-    
-    const rhymingTokens = [];
-    
-    // Search through all tokens in vocabulary
-    // Use bpe_vocab.length to ensure we check all indices, even if sparse
-    const vocabLen = bpe_vocab.length;
-    for (let tokenId = 0; tokenId < vocabLen; tokenId++) {
-        if (!bpe_vocab[tokenId]) continue;
-        
-        const tokenBytes = bpe_vocab[tokenId];
-        const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
-        
-        // Clean the token text to check for rhyme
-        // We want tokens that could be the END of a word
-        // So we remove trailing punctuation/spaces for the check
-        const cleanText = tokenText.trim().replace(/[.,;:!?'"»«\-–—]+$/g, '');
-        
-        // Skip short tokens or tokens that are just punctuation
-        if (cleanText.length < 2) continue;
-        
-        // Skip if this exact word was already used recently
-        if (usedWords.has(cleanText.toLowerCase())) continue;
-        
-        // Get the ending of the token
-        const tokenEnding = getEndingSound(cleanText);
-        if (!tokenEnding || tokenEnding.length < 2) continue;
-        
-        // Check if it rhymes
-        if (doTheyRhyme(tokenEnding, targetEnding)) {
-            const prob = probs ? probs[tokenId] : 0;
-            rhymingTokens.push({
-                tokenId,
-                text: tokenText, // Keep original text
-                cleanText: cleanText,
-                ending: tokenEnding,
-                prob
-            });
-        }
-    }
-    
-    // Sort by probability (highest first)
-    rhymingTokens.sort((a, b) => b.prob - a.prob);
-    
-    return rhymingTokens;
+    return suffix >= 3 ? Math.min(0.4, suffix / Math.max(first.length, second.length)) : 0;
 }
 
 /**
- * Get the rhyme scheme target for current verse in terza rima (ABA BCB CDC...).
- * Returns the verse index that the current verse should rhyme with, or -1 if free.
+ * Approximate vowel-group syllables for ranking and broad plausibility guards.
  */
+function countItalianSyllables(text) {
+    const words = normalizeItalian(text).match(/[a-z]+/g) || [];
+    let count = 0;
+    for (const word of words) {
+        const groups = word.match(/[aeiou]+/g);
+        count += groups ? groups.length : 0;
+    }
+    return count;
+}
+
+function getVerseMeterScore(line) {
+    const syllables = countItalianSyllables(line);
+    if (syllables < 5 || syllables > 18) return 0;
+    return Math.max(0, 1 - Math.abs(syllables - 11) / 10);
+}
+
+/**
+ * Check that text ends on a word boundary (the last word is complete,
+ * not a BPE fragment).  Accepts: word + optional punctuation + newline.
+ */
+function isWordBoundary(text) {
+    return /[a-zàèéìíòóùú][.,;:!?…]*\n?$/.test(text.trimEnd());
+}
+
+/**
+ * Load rimario.json and build the inverse index (word → suffix).
+ * Returns a promise that resolves to the rimario object.
+ */
+async function loadRimario(url) {
+    try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        rimario = data;
+        rimarioIndex = new Map();
+        for (const [suffix, words] of Object.entries(data)) {
+            for (const word of words) {
+                rimarioIndex.set(word.toLowerCase(), suffix);
+            }
+        }
+        console.log(`[RIMARIO] Loaded ${rimarioIndex.size} words in ${Object.keys(data).length} rhyme families`);
+        return data;
+    } catch (error) {
+        console.warn(`[RIMARIO] Failed to load rimario: ${error.message}`);
+        rimario = null;
+        rimarioIndex = new Map();
+        return null;
+    }
+}
+
+/**
+ * Get all words that rhyme with the given suffix from the rimario.
+ * Returns an empty array if rimario is not loaded or suffix not found.
+ */
+function getRhymeFamilies(suffix) {
+    if (!rimario || !suffix) return [];
+    return rimario[suffix] || [];
+}
+
+/** Decode BPE byte chunks together, preserving multi-token UTF-8 characters. */
+function decodeTokenByteSequences(byteSequences, pendingPrefix = new Uint8Array(0)) {
+    const chunks = byteSequences.filter(Boolean);
+    const prefix = pendingPrefix || new Uint8Array(0);
+    const length = prefix.length + chunks.reduce((total, chunk) => total + chunk.length, 0);
+    const bytes = new Uint8Array(length);
+    bytes.set(prefix, 0);
+    let offset = prefix.length;
+    for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+    }
+    // Mirror tokenizer.js: trailing incomplete UTF-8 belongs to the next token.
+    let validEnd = bytes.length;
+    for (let index = Math.max(0, bytes.length - 4); index < bytes.length; index++) {
+        const byte = bytes[index];
+        if ((byte & 0x80) === 0) {
+            validEnd = index + 1;
+        } else if ((byte & 0xE0) === 0xC0) {
+            if (index + 2 <= bytes.length) validEnd = index + 2;
+            else { validEnd = index; break; }
+        } else if ((byte & 0xF0) === 0xE0) {
+            if (index + 3 <= bytes.length) validEnd = index + 3;
+            else { validEnd = index; break; }
+        } else if ((byte & 0xF8) === 0xF0) {
+            if (index + 4 <= bytes.length) validEnd = index + 4;
+            else { validEnd = index; break; }
+        }
+    }
+    return new TextDecoder('utf-8', { fatal: false }).decode(bytes.slice(0, validEnd));
+}
+
+/** Return every line completed by emitted text, including deliberately empty lines. */
+function getCompletedLineEndings(previousText, emittedText) {
+    let line = String(previousText || '').split('\n').pop();
+    const completed = [];
+    for (const character of String(emittedText || '')) {
+        if (character === '\n') {
+            completed.push(line);
+            line = '';
+        } else {
+            line += character;
+        }
+    }
+    return completed;
+}
+
+function isRhymeSearchSnapshotCurrent(snapshot, current) {
+    return snapshot.epoch === current.epoch && snapshot.mode === current.mode &&
+        snapshot.verseNumber === current.verseNumber && snapshot.contextKey === current.contextKey &&
+        snapshot.generatedText === current.generatedText;
+}
+
+function fallbackToNormalSampling(probs, sampler) {
+    return sampler(probs);
+}
+
+/**
+ * Validate a decoded continuation only once it has ended the current line.
+ * A candidate may contain text after its one newline, but never a second line.
+ *
+ * KEY IMPROVEMENT: the last word before the newline must be a complete word
+ * (checked via isWordBoundary), not a BPE fragment.
+ */
+function evaluateCompletedRhymeContinuation(partialVerse, continuation, targetEnding) {
+    const firstNewline = continuation.indexOf('\n');
+    if (firstNewline < 0) return { accepted: false, reason: 'no-newline' };
+    if (continuation.indexOf('\n', firstNewline + 1) >= 0) {
+        return { accepted: false, reason: 'multiple-newlines' };
+    }
+
+    const lineEnd = continuation.slice(0, firstNewline);
+    const line = `${partialVerse}${lineEnd}`;
+
+    // Verify the line ends on a word boundary, not mid-BPE-token
+    if (lineEnd.length > 0 && !/[a-zàèéìíòóùú]/.test(lineEnd.slice(-1).replace(/[.,;:!?…]/g, ''))) {
+        return { accepted: false, reason: 'no-word-ending', line };
+    }
+
+    const ending = getEndingSound(line);
+    const meterScore = getVerseMeterScore(line);
+    if (meterScore === 0) return { accepted: false, reason: 'implausible-meter', line, ending };
+    if (!doTheyRhyme(ending, targetEnding)) {
+        return { accepted: false, reason: 'not-a-rhyme', line, ending, meterScore };
+    }
+    return { accepted: true, line, ending, meterScore };
+}
+
+/** Get the terza-rima target verse (ABA BCB CDC...). */
 function getRhymeTarget(verseIndex) {
-    // Terza rima pattern:
-    // Verse 0 (A): free
-    // Verse 1 (B): free  
-    // Verse 2 (A): rhymes with verse 0
-    // Verse 3 (B): rhymes with verse 1
-    // Verse 4 (C): free (new rhyme)
-    // Verse 5 (B): rhymes with verse 3
-    // Verse 6 (C): rhymes with verse 4
-    // Verse 7 (D): free (new rhyme)
-    // etc.
-    
-    if (verseIndex < 2) return -1; // First two verses are free
-    
-    const pos = verseIndex % 3;
-    if (pos === 1) {
-        return -1; // The middle verse of a tercet introduces a new rhyme
-    }
-    
+    if (verseIndex < 2 || verseIndex % 3 === 1) return -1;
     return verseIndex - 2;
 }
 
-/**
- * Score how well a token rhymes with the target ending.
- */
-function getRhymeScore(tokenId, targetEnding) {
-    if (!bpe_vocab[tokenId]) return 0;
-    
-    const tokenBytes = bpe_vocab[tokenId];
-    const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
-    const tokenEnding = getEndingSound(tokenText);
-    
-    if (!tokenEnding || !targetEnding) return 0;
-    
-    // Normalize for comparison
-    const t = tokenEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
-    const target = targetEnding.toLowerCase().replace(/[àá]/g, 'a').replace(/[èé]/g, 'e').replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
-    
-    // Exact match
-    if (t === target) return 1.0;
-    
-    // Check suffix matching (last n characters)
-    for (let len = Math.min(t.length, target.length, 4); len >= 2; len--) {
-        if (t.slice(-len) === target.slice(-len)) {
-            return 0.5 + (len / 8); // 0.5 to 1.0 based on match length
-        }
-    }
-    
-    return 0;
-}
-
-/**
- * Check if a token ends a verse (contains newline or is followed by newline).
- */
-function isVerseEndingToken(tokenId) {
-    if (!bpe_vocab[tokenId]) return false;
-    const tokenBytes = bpe_vocab[tokenId];
-    const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
-    return tokenText.includes('\n');
-}
-
-/**
- * Get the current partial verse (text since the last newline).
- */
 function getCurrentPartialVerse() {
     const lines = generatedText.split('\n');
     return lines[lines.length - 1] || '';
 }
 
-/**
- * Get the last word (or partial word) from text.
- */
-function getLastWord(text) {
-    const words = text.trim().split(/\s+/);
-    return words[words.length - 1] || '';
-}
-
-/**
- * Check if we're near end of verse (verse typically 30-50 chars in Dante's style).
- * Returns true if we should start looking for rhyming opportunities.
- */
-function isNearVerseEnd() {
-    const partialVerse = getCurrentPartialVerse();
-    // Dante's verses are typically 10-12 syllables, roughly 30-50 characters
-    return partialVerse.length >= 25;
-}
-
-/**
- * Calculate rhyme score between current partial verse ending and a target ending.
- * Considers what the verse ending would be if we add the token.
- */
-function calculateRhymeScoreForToken(tokenId, targetEnding) {
-    if (!bpe_vocab[tokenId] || !targetEnding) return 0;
-    
-    const tokenBytes = bpe_vocab[tokenId];
-    const tokenText = new TextDecoder('utf-8', { fatal: false }).decode(new Uint8Array(tokenBytes));
-    
-    // Clean the token text
-    const cleanToken = tokenText.toLowerCase()
-        .replace(/[àá]/g, 'a').replace(/[èé]/g, 'e')
-        .replace(/[ìíï]/g, 'i').replace(/[òó]/g, 'o').replace(/[ùúü]/g, 'u');
-    
-    // Get current partial verse and last word
-    const partialVerse = getCurrentPartialVerse();
-    const currentLastWord = getLastWord(partialVerse);
-    
-    // If token contains newline, check if the word before newline rhymes
-    if (tokenText.includes('\n')) {
-        const beforeNewline = tokenText.split('\n')[0];
-        const potentialLastWord = currentLastWord + beforeNewline;
-        const potentialEnding = getEndingSound(potentialLastWord);
-        
-        if (potentialEnding && doTheyRhyme(potentialEnding, targetEnding)) {
-            return 1.0; // Perfect match - ends verse with rhyme
-        }
-        // Even if newline token doesn't rhyme perfectly, check partial match
-        if (potentialEnding && targetEnding.endsWith(potentialEnding.slice(-2))) {
-            return 0.3; // Weak match
-        }
-        return 0;
-    }
-    
-    // If token doesn't contain newline, check if it could form a rhyming word
-    const potentialWord = currentLastWord + tokenText;
-    const potentialEnding = getEndingSound(potentialWord);
-    
-    // Check for rhyme match
-    if (potentialEnding && doTheyRhyme(potentialEnding, targetEnding)) {
-        return 0.7; // Good match - building towards rhyme
-    }
-    
-    // Check if the token itself contains the rhyme pattern (could lead to rhyme)
-    // e.g., if targetEnding is "ita", and token contains "it", that's promising
-    const target2 = targetEnding.slice(-2);
-    const target3 = targetEnding.slice(-3);
-    
-    if (cleanToken.includes(target3)) {
-        return 0.6; // Token contains the rhyme pattern
-    }
-    if (cleanToken.includes(target2)) {
-        return 0.4; // Token contains part of the rhyme pattern
-    }
-    if (cleanToken.endsWith(target2.charAt(0))) {
-        return 0.2; // Token ends with start of rhyme
-    }
-    
-    return 0;
+if (typeof module !== 'undefined' && module.exports) {
+    module.exports = {
+        countItalianSyllables,
+        decodeTokenByteSequences,
+        doTheyRhyme,
+        evaluateCompletedRhymeContinuation,
+        fallbackToNormalSampling,
+        getAssonanceScore,
+        getCompletedLineEndings,
+        getEndingSound,
+        getExactEndingProgressScore,
+        getRhymeFamilies,
+        getRhymeTarget,
+        getStressedSuffix,
+        getVerseMeterScore,
+        isRhymeSearchSnapshotCurrent,
+        isWordBoundary,
+        normalizeItalian,
+        splitSyllableNuclei,
+    };
 }

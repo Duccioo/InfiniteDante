@@ -210,12 +210,16 @@ async function startGeneration() {
     if (isGenerating) return;
 
     isGenerating = true;
+    const generationRunId = beginGenerationRun();
     startBtn.disabled = true;
     stopBtn.disabled = false;
     statusEl.textContent = 'GENERATING...';
     statusEl.classList.add('active');
 
     disableEditing();
+    // A paused session may have been edited; never reuse a completion selected
+    // against an earlier context, but keep its per-verse attempt budget.
+    cancelPendingRhymeCompletion();
 
     // Initialize with seed text if empty
     if (generatedText.length === 0) {
@@ -227,39 +231,41 @@ async function startGeneration() {
         // Reset rhyme tracking and register the first verse ending
         verseEndings = [getEndingSound('Nel mezzo del cammin di nostra vita')]; // "ita" from "vita"
         currentVerseNumber = 1; // Next verse to be generated is verse 1
+        resetRhymeSearchAttempts();
         console.log('[RHYME] Initialized with verse 0 ending:', verseEndings[0]);
     }
 
+    // Rebuild context from visible text only; discard bytes buffered by a prior run.
+    resetDecoder();
     // Convert current text to tokens
     let tokens = encode(generatedText);
     if (tokens.length === 0) tokens = [0];
+    currentTokens = tokens.slice();
 
     // Generation loop
-    while (isGenerating) {
+    while (isGenerationRunCurrent(generationRunId)) {
         try {
             const nextToken = await generateNext(tokens);
+            if (!isGenerationRunCurrent(generationRunId)) break;
             tokens.push(nextToken);
 
             if (tokens.length > effectiveBlockSize) {
                 tokens = tokens.slice(-effectiveBlockSize);
             }
+            currentTokens = tokens.slice();
 
             const char = decode([nextToken]);
             
             // Track verse endings for Dante rhyme mode
-            if (danteRhymeMode && char.includes('\n')) {
-                // Extract the ending of the verse that just ended
-                // The token 'char' might contain text BEFORE the newline (e.g., "vita\n")
-                // We need to combine generatedText + the part of char before \n
-                const partBeforeNewline = char.split('\n')[0];
-                const fullTextBeforeNewline = generatedText + partBeforeNewline;
-                const lines = fullTextBeforeNewline.split('\n');
-                // Get the last non-empty line (the verse that just ended)
-                const lastVerse = lines.filter(l => l.trim().length > 0).pop() || '';
-                const ending = getEndingSound(lastVerse);
-                console.log(`Verse ${currentVerseNumber}: "${lastVerse.slice(-30)}" -> ending: "${ending}"`);
-                verseEndings.push(ending);
-                currentVerseNumber++;
+            if (char.includes('\n')) {
+                const completedLines = getCompletedLineEndings(generatedText, char);
+                for (const line of completedLines) {
+                    const ending = getEndingSound(line);
+                    console.log(`Verse ${currentVerseNumber}: "${line.slice(-30)}" -> ending: "${ending}"`);
+                    verseEndings.push(ending);
+                    currentVerseNumber++;
+                }
+                resetRhymeSearchAttempts();
             }
             
             updateDisplay(char);
@@ -269,6 +275,7 @@ async function startGeneration() {
             await new Promise(resolve => setTimeout(resolve, speed));
 
         } catch (error) {
+            if (!shouldHandleGenerationRunError(generationRunId)) break;
             console.error('Generation error:', error);
             statusEl.textContent = 'ERROR: ' + error.message;
             stopGeneration();
@@ -279,6 +286,8 @@ async function startGeneration() {
 
 function stopGeneration() {
     isGenerating = false;
+    invalidateGenerationRun();
+    cancelPendingRhymeCompletion();
     startBtn.disabled = false;
     stopBtn.disabled = true;
     statusEl.textContent = 'PAUSED — CLICK TEXT TO EDIT';
@@ -300,4 +309,5 @@ function clearText() {
     // Reset rhyme tracking
     verseEndings = [];
     currentVerseNumber = 0;
+    resetRhymeDocumentState();
 }

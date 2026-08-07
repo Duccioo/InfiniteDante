@@ -137,7 +137,7 @@ def load_tokenizer():
             tokens = merge_ids(tokens, pair, idx)
         return tokens
 
-    return vocab_size, encode, decode
+    return vocab_size, encode, decode, vocab
 
 
 # ==============================================================================
@@ -206,7 +206,8 @@ class Experience:
     token_ids: torch.Tensor  # Full sequence (prompt + generated)
     log_probs: torch.Tensor  # Log probs of generated tokens
     reward: float
-    shaped_rewards: Optional[List[float]] = None  # Per-token shaped rewards
+    shaped_rewards: Optional[List[float]] = None  # Per-verse shaped rewards
+    per_token_rewards: Optional[torch.Tensor] = None  # Per-token rewards mapped from verses
     breakdown: Optional[dict] = None
 
 
@@ -253,6 +254,7 @@ class PPOTrainer:
         encode_fn,
         decode_fn,
         vocab_size: int,
+        vocab_map: dict = None,
         reference_model: Optional[NanoGPT] = None,
         config: PPOConfig = None,
     ):
@@ -260,6 +262,7 @@ class PPOTrainer:
         self.encode = encode_fn
         self.decode = decode_fn
         self.vocab_size = vocab_size
+        self.vocab_map = vocab_map or {}
         self.config = config or PPOConfig()
 
         # Reference model for KL penalty (frozen)
@@ -311,13 +314,44 @@ class PPOTrainer:
         # Compute reward
         reward, breakdown = self.scorer.compute_reward(generated_part)
         
-        # Compute shaped rewards if enabled
+        # Compute per-verse rewards and map to token positions
         shaped_rewards = None
         if self.config.use_reward_shaping:
             verse_rewards = self.scorer.compute_per_verse_rewards(generated_part)
             if verse_rewards:
-                # For now, use final reward but we could distribute
                 shaped_rewards = [r for r, _ in verse_rewards]
+
+        # Map per-verse rewards to per-token rewards by finding newline positions
+        per_token_rewards = None
+        if shaped_rewards is not None and len(shaped_rewards) > 0:
+            generated_ids = generated_idx[0, prompt_len:].tolist()
+            generated_chars = self.decode(generated_ids)
+            # Re-encode to get back token-level mapping (decode was destructive)
+            # Instead, find newline token positions in the generated sequence
+            newline_positions = []
+            decoded_so_far = ""
+            for t_idx, tok_id in enumerate(generated_ids):
+                # Decode individual token (rough char mapping)
+                tok_bytes = b""
+                if tok_id in self.vocab_map:
+                    tok_bytes = self.vocab_map[tok_id]
+                try:
+                    tok_str = tok_bytes.decode("utf-8", errors="replace")
+                except:
+                    tok_str = ""
+                if "\n" in tok_str:
+                    newline_positions.append(t_idx)
+            
+            # Assign each token the reward of its verse
+            per_token_rewards = torch.zeros(len(generated_ids), device=DEVICE)
+            verse_idx = 0
+            for t_idx in range(len(generated_ids)):
+                if verse_idx < len(shaped_rewards):
+                    per_token_rewards[t_idx] = shaped_rewards[verse_idx]
+                else:
+                    per_token_rewards[t_idx] = reward  # Fallback to global
+                if t_idx in newline_positions and verse_idx < len(shaped_rewards) - 1:
+                    verse_idx += 1
 
         return Experience(
             prompt=prompt,
@@ -326,6 +360,7 @@ class PPOTrainer:
             log_probs=log_probs,
             reward=reward,
             shaped_rewards=shaped_rewards,
+            per_token_rewards=per_token_rewards,
             breakdown=breakdown,
         )
 
@@ -450,8 +485,16 @@ class PPOTrainer:
                 # Compute policy ratio
                 ratio = (current_log_probs - old_log_probs).exp()
                 
-                # Compute advantage (using normalized reward as advantage estimate)
-                advantage = torch.tensor(reward, device=DEVICE)
+                # Compute advantage: use per-token rewards when available
+                if exp.per_token_rewards is not None:
+                    # Per-token advantage: each token gets its verse reward
+                    n_gen = current_log_probs.shape[-1]
+                    ptr = exp.per_token_rewards[:n_gen].to(DEVICE)
+                    if self.config.normalize_rewards:
+                        ptr = (ptr - ptr.mean()) / (ptr.std() + 1e-8)
+                    advantage = ptr.unsqueeze(0)  # [1, n_gen]
+                else:
+                    advantage = torch.tensor(reward, device=DEVICE)
                 
                 # PPO clipped objective
                 surr1 = ratio * advantage
@@ -464,8 +507,22 @@ class PPOTrainer:
                 # Policy loss (negative because we maximize)
                 policy_loss = -torch.min(surr1, surr2).mean()
                 
-                # Skip KL to save memory (we already have clipping)
+                # KL divergence from reference model (computed efficiently
+                # over the generated span only, not the full context)
                 kl_loss = torch.tensor(0.0, device=DEVICE)
+                if self.reference_model is not None and self.config.kl_coeff > 0:
+                    with torch.no_grad():
+                        ref_logits, _ = self.reference_model(idx_cond)
+                        ref_log_probs = F.log_softmax(
+                            ref_logits[:, prompt_len-1:, :] / self.config.temperature,
+                            dim=-1
+                        )
+                        ref_selected = ref_log_probs.gather(
+                            -1, generated_tokens.unsqueeze(-1)
+                        ).squeeze(-1)
+                    # KL(current || ref) = sum(exp(current) * (current - ref))
+                    # Approximation: mean per-token KL
+                    kl_loss = (current_log_probs.exp() * (current_log_probs - ref_selected)).mean()
                 
                 # Simplified entropy (just log probs mean, saves memory)
                 entropy = -current_log_probs.mean()
@@ -483,7 +540,7 @@ class PPOTrainer:
                 
                 # Record stats before cleanup
                 total_policy_loss += policy_loss.item()
-                total_kl += 0.0  # KL disabled for memory
+                total_kl += kl_loss.item()
                 total_entropy += entropy.item()
                 accumulated_loss += exp_loss.item()
                 
@@ -601,7 +658,7 @@ def main():
 
     # Load tokenizer
     print("Loading tokenizer...")
-    vocab_size, encode, decode = load_tokenizer()
+    vocab_size, encode, decode, vocab_map = load_tokenizer()
     print(f"Vocab size: {vocab_size}")
 
     # Create model
@@ -652,6 +709,7 @@ def main():
         encode_fn=encode,
         decode_fn=decode,
         vocab_size=vocab_size,
+        vocab_map=vocab_map,
         reference_model=reference_model,
         config=config,
     )
