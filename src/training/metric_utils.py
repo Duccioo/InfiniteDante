@@ -67,36 +67,22 @@ class ItalianSyllableCounter:
         self.apply_sinalefe = apply_sinalefe
 
     def count_word_syllables(self, word: str) -> int:
-        """Count syllables in a single word."""
+        """Count syllables in a single word with poetic hiatus/diphthong rules."""
         word = word.lower().strip()
         if not word:
             return 0
 
-        # Remove punctuation but keep apostrophes for now
-        word = re.sub(r"[^\w'àèéìíòóùú]", "", word)
-        if not word:
+        # Remove punctuation
+        w = re.sub(r"[^\w'àèéìíòóùú]", "", word)
+        if not w:
             return 0
 
-        syllables = 0
-        i = 0
+        # Silent 'h'
+        if w.startswith("h") and len(w) > 1 and w[1] in "aeiouàèéìíòóùú":
+            w = w[1:]
 
-        while i < len(word):
-            if word[i] in VOWELS or word[i] in "àèéìíòóùú":
-                syllables += 1
-
-                # Check for diphthong (doesn't add extra syllable)
-                if i + 1 < len(word):
-                    pair = word[i : i + 2].lower()
-                    # Check if it's a hiatus (add syllable) or diphthong (don't)
-                    is_hiatus = any(h in pair for h in HIATUS_PATTERNS)
-                    is_diphthong = pair in DIPHTHONGS
-
-                    if is_diphthong and not is_hiatus:
-                        i += 1  # Skip next vowel, it's part of diphthong
-
-            i += 1
-
-        return max(syllables, 1) if word else 0
+        nuclei = _split_syllable_nuclei(w)
+        return max(len(nuclei), 1)
 
     def count_verse_syllables(self, verse: str) -> int:
         """
@@ -156,22 +142,59 @@ _ACCENTED_MAP = {
     "ò": "o", "ó": "o", "ù": "u", "ú": "u",
 }
 
+_KNOWN_HIATUS_STEMS = {
+    "paura": "ura",
+    "paure": "ure",
+}
+
+_TONIC_IO_WORDS = {
+    "desio", "oblio", "rio", "natio", "mormorio", "gentilio", "pendio", "addio", 
+    "fio", "disio", "campio", "brischio", "restio", "brusio", "ronzio", "calpestio"
+}
+
+_TONIC_IA_WORDS = {
+    "via", "pria", "mia", "sia", "follia", "armonia", "poesia", "cortesia",
+    "allegria", "compagnia", "balia", "ria", "magia", "fantasia", "ironia",
+    "bugia", "corsia", "fabbria", "malia", "villania", "gelosia", "fiancheria",
+    "fantesia", "baratteria", "idropesia", "epia", "abbadia", "dia", "disvia",
+    "invia", "devia", "godia", "udia", "sentia", "partia", "uscia", "salia",
+    "smarria", "maria", "girolomia", "tenia", "vedia", "faria", "daria", "saria",
+    "avria", "poria", "credea", "solia", "arderia", "valia", "pazia"
+}
+
+_NON_TONIC_IA_WORDS = {
+    "grazia", "audacia", "minaccia", "angoscia", "striscia", "lascia", "faccia",
+    "provincia", "materia", "memoria", "gloria", "storia", "vittoria", "notizia",
+    "sentenzia", "ingiuria", "ignominia", "calunnia", "curia", "furia"
+}
+
 
 def _split_syllable_nuclei(word: str) -> list:
     """
     Return a list of (start_pos, end_pos) for each syllable nucleus.
     Diphthongs count as one nucleus; accented hiatus as two.
+    Diacritic 'i' after c/g before a/o/u is skipped.
     """
     nuclei = []
-    plain = "".join(_ACCENTED_MAP.get(c, c) for c in word)
+    plain = "".join(_ACCENTED_MAP.get(c, c) for c in word).replace("h", "")
     i = 0
     while i < len(plain):
         if plain[i] in "aeiou":
+            # Check if this 'i' is diacritic after c/g followed by a/o/u (giunto, gioco)
+            if plain[i] == 'i' and i > 0 and plain[i-1] in {'c', 'g'} and i + 1 < len(plain) and plain[i+1] in {'a', 'o', 'u'}:
+                i += 1
+                continue
+
             start = i
             while (i + 1 < len(plain) and plain[i + 1] in "aeiou"
                    and plain[i:i+2] in _DIPHTHONGS
                    and word[i] not in ACCENTED_VOWELS
                    and word[i + 1] not in ACCENTED_VOWELS):
+                if plain[i:i+2] in {"ia", "io", "ie", "ea", "eo", "oa"}:
+                    if word in _TONIC_IO_WORDS or word in _TONIC_IA_WORDS:
+                        break
+                if plain[i:i+2] == "au" and "paur" in word:
+                    break
                 i += 1
             nuclei.append((start, i))
             i += 1
@@ -184,27 +207,47 @@ def get_stressed_suffix(word: str) -> str:
     """
     Extract the rhyme suffix starting from the stressed vowel.
 
-    Uses explicit accent if present, otherwise assumes paroxytone
-    stress (penultimate syllable nucleus, diphthong-aware).
+    Uses explicit accent if present, handles poetic hiatus and oxytone
+    verb endings (-ai, -ei), and assumes paroxytone stress otherwise.
     Returns the suffix with accents normalized to plain vowels.
     """
     word = word.lower().strip()
-    word = re.sub(r"[^a-zàèéìíòóùú]", "", word)
-    if len(word) < 2:
-        return word
+    w = re.sub(r"[^a-zàèéìíòóùú]", "", word)
+    if len(w) < 2:
+        return w
 
-    # 1. Explicit accent mark
-    for i, ch in enumerate(word):
+    # 1. Known poetic hiatus stems / whole words
+    if w in _KNOWN_HIATUS_STEMS:
+        return _KNOWN_HIATUS_STEMS[w]
+    if w in _TONIC_IO_WORDS:
+        return "io"
+    if w in _TONIC_IA_WORDS or (w.endswith("ia") and len(w) <= 4):
+        return "ia"
+    if w.endswith("ia") and len(w) >= 4:
+        if w not in _NON_TONIC_IA_WORDS and (w.endswith(("ria", "dia", "tia", "via", "nia", "lia")) or w in _TONIC_IA_WORDS):
+            return "ia"
+
+    # 2. Explicit accent mark
+    for i, ch in enumerate(w):
         if ch in ACCENTED_VOWELS:
-            return "".join(_ACCENTED_MAP.get(c, c) for c in word[i:])
+            return "".join(_ACCENTED_MAP.get(c, c) for c in w[i:])
 
-    # 2. Penultimate syllable nucleus (diphthong-aware)
-    nuclei = _split_syllable_nuclei(word)
+    # 3. Oxytone (tronca) verbal / common endings: -ai, -ei, -ui, -oi (trovai -> ai, fei -> ei)
+    if len(w) >= 3 and w.endswith(("ai", "ei", "ui", "oi")):
+        return w[-2:]
+
+    # 4. Hiatus pattern: vowel + u + consonant + a (paura -> ura)
+    if "aura" in w and w.endswith("aura") and w != "aura" and not w.endswith("laura"):
+        return "ura"
+
+    # 5. Penultimate syllable nucleus (diphthong-aware)
+    nuclei = _split_syllable_nuclei(w)
     if not nuclei:
-        return word[-3:] if len(word) >= 3 else word
+        return w[-3:] if len(w) >= 3 else w
 
     stress_start = nuclei[-2][0] if len(nuclei) >= 2 else nuclei[0][0]
-    return word[stress_start:]
+    return w[stress_start:]
+
 
 
 class RhymeDetector:

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest numpy
+      - name: Run Pytest
+        run: |
+          python -m pytest tests
+
+  test-node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Run JS Phonetic & Rhyme Tests
+        run: |
+          node src/website/js/rhyme.test.js
+
+  validate-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check required model assets
+        run: |
+          test -f model/rimario.json || { echo "rimario.json missing"; exit 1; }
+          test -f model/meta.json || { echo "meta.json missing"; exit 1; }
+          test -f model/model.onnx || { echo "model.onnx missing"; exit 1; }
+          test -f model/model_int8.onnx || { echo "model_int8.onnx missing"; exit 1; }
+          echo "All required core assets are present."

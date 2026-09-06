@@ -38,6 +38,55 @@ function toRoman(num) {
 }
 
 /**
+ * Render verses with metric analysis, syllable breakdown, and drop caps.
+ */
+function renderFormattedText() {
+    if (!textOutput) return;
+    if (!showMetricAnalysis) {
+        if (!showContextWindow) {
+            textOutput.textContent = generatedText;
+        }
+        return;
+    }
+
+    const lines = generatedText.split('\n');
+    let html = '';
+    let currentTerzina = [];
+
+    lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+        if (trimmed.startsWith('CANTO')) {
+            html += `<div class="canto-separator">${escapeHtml(trimmed)}</div>`;
+            return;
+        }
+
+        const tagMatch = trimmed.match(/^(\[[A-Z]\])\s*(.*)$/);
+        const tag = tagMatch ? tagMatch[1] : '';
+        const rawVerse = tagMatch ? tagMatch[2] : trimmed;
+
+        const syllables = typeof countSyllables === 'function' ? countSyllables(rawVerse) : 11;
+        const ending = typeof getEndingSound === 'function' ? getEndingSound(rawVerse) : '';
+
+        const lineHtml = `
+            <div class="verse-line">
+                ${tag ? `<span class="rhyme-badge">${escapeHtml(tag)}</span>` : ''}
+                <span class="verse-text">${escapeHtml(rawVerse)}</span>
+                <span class="syllable-badge" title="Rima: -${escapeHtml(ending)}">${syllables} sillabe</span>
+            </div>
+        `;
+        currentTerzina.push(lineHtml);
+
+        if (currentTerzina.length === 3 || idx === lines.length - 1) {
+            html += `<div class="terzina-block">${currentTerzina.join('')}</div>`;
+            currentTerzina = [];
+        }
+    });
+
+    textOutput.innerHTML = html;
+}
+
+/**
  * Update the display with new text.
  */
 function updateDisplay(newChar) {
@@ -55,8 +104,10 @@ function updateDisplay(newChar) {
         textContainer.insertBefore(separator, cursorEl);
     }
 
-    // Update text content (without highlighting for now, highlighting is done in updateInlineContextHighlight)
-    if (!showContextWindow) {
+    // Update text content with metric analysis or plain/highlighted text
+    if (showMetricAnalysis) {
+        renderFormattedText();
+    } else if (!showContextWindow) {
         textOutput.textContent = generatedText;
     }
 

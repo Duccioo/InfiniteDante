@@ -31,7 +31,7 @@ const RHYME_MODE_OFF = 'OFF';
 const RHYME_MODE_SOFT = 'SOFT';
 const RHYME_MODE_STRICT = 'STRICT';
 const RHYME_MODE_FORCED = 'FORCED';
-let danteRhymeMode = RHYME_MODE_SOFT;
+let danteRhymeMode = RHYME_MODE_FORCED;
 let verseEndings = [];      // Stores the ending sound of each verse
 let currentVerseNumber = 0; // Current verse count (0-indexed)
 let pendingRhymeTokenQueue = []; // A validated, selected line ending
@@ -85,3 +85,9 @@ let temperatureSlider, topKSlider, topPSlider, repPenaltySlider, speedSlider;
 let tempValue, topKValue, topPValue, repPenaltyValue, speedValue;
 let statusEl, editIndicator;
 let contextToggleBtn, contextWindowDisplay, ctxContent, ctxTokenCount;
+
+// Extended Features State
+let showMetricAnalysis = false;
+let isSpeaking = false;
+let activeProvider = 'wasm';
+let activeModelType = 'int8';

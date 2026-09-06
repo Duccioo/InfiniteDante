@@ -1,0 +1,17 @@
+{
+  "name": "Infinite Dante",
+  "short_name": "InfiniteDante",
+  "description": "Generatore infinito di versi nello stile della Divina Commedia con Terza Rima Dantesca",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#d4a056",
+  "icons": [
+    {
+      "src": "../../cover.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

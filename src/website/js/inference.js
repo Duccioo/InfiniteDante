@@ -13,16 +13,33 @@
 
 const RHYME_SEARCH_BEAM_WIDTH = 3;
 const RHYME_SEARCH_CANDIDATE_POOL = 32;
-const RHYME_SEARCH_MAX_TOKENS = 4;
-const RHYME_SEARCH_MIN_CHARS = 28;
+const RHYME_SEARCH_MAX_TOKENS = 8;
+const RHYME_SEARCH_MIN_CHARS = 26;
 const RHYME_STRICT_MAX_ATTEMPTS = 3;
 const RHYME_STRICT_RETRY_CHARS = 6;
 const RHYME_EXACT_ENDING_BONUS = 4;
 
 // FORCED mode constants
-const FORCED_MAX_CANDIDATES = 30;
+const FORCED_MAX_CANDIDATES = 25;
 const FORCED_METER_TOLERANCE_TIGHT = 0;  // exactly 11
 const FORCED_METER_TOLERANCE_LOOSE = 1;  // 10-12
+
+let newlineTokenIds = null;
+function getNewlineTokenIds() {
+    if (newlineTokenIds) return newlineTokenIds;
+    newlineTokenIds = new Set();
+    if (typeof meta !== 'undefined' && meta && typeof bpe_vocab !== 'undefined') {
+        for (let id = 0; id < meta.vocab_size; id++) {
+            const bytes = bpe_vocab[id];
+            if (bytes && bytes.includes(10)) { // 10 is '\n'
+                newlineTokenIds.add(id);
+            }
+        }
+    } else {
+        newlineTokenIds.add(10);
+    }
+    return newlineTokenIds;
+}
 
 /** Run inference on the ONNX model. */
 async function runInference(tokens) {
@@ -170,11 +187,13 @@ async function scoreTokenSequence(context, tokenIds) {
     const output = results.output;
     const vocabSize = meta.vocab_size;
 
-    // Sum log-probs for each forced token
+    // Sum log-probs for each forced token.
+    // Note: in autoregressive transformers, logits at index (pos) predict token at (pos + 1).
+    // The first token of tokenIds is at index startPos, so its logits are at startPos - 1.
     let logProb = 0;
     const startPos = seqLen - tokenIds.length;
     for (let i = 0; i < tokenIds.length; i++) {
-        const pos = startPos + i;
+        const pos = Math.max(0, startPos - 1 + i);
         const logitsStart = pos * vocabSize;
         // Compute log-softmax for this position
         const logits = output.data.slice(logitsStart, logitsStart + vocabSize);
@@ -197,140 +216,108 @@ async function scoreTokenSequence(context, tokenIds) {
  * FORCED rhyme completion: pick a rhyme word from the rimario,
  * encode it as BPE, score with the model, apply progressive fallbacks.
  *
- * Fallback levels:
- * 1. Exact rhyme + 11 syllables
- * 2. Exact rhyme + 10-12 syllables
- * 3. Assonance + 11 syllables
- * 4. Forced insertion of best word (ignore meter)
- * 5. Simple close (normal sampling)
+ * Checks:
+ * 1. Must not be in the middle of an elision or hyphen.
+ * 2. partialVerse must have at least 7 syllables (or >= 24 chars) so the verse
+ *    reaches 10-12 syllables when the rhyme word is appended.
+ * 3. Exact candidates are filtered and sorted primarily by meter adherence (target 11),
+ *    and scored with the model's teacher-forced log probability.
  */
+function isReadyForWordAppend(text) {
+    if (!text) return true;
+    const trimmed = text.trimEnd();
+    if (!trimmed) return true;
+    if (trimmed.endsWith("'") || trimmed.endsWith("-")) return false;
+    // Lone single consonant at end of line (e.g. " faceva s") means an incomplete subword
+    if (/\s+[b-df-hj-np-tv-z]$/i.test(trimmed)) return false;
+    return true;
+}
+
 async function findForcedRhymeCompletion(context, partialVerse, targetSuffix,
     isSearchCurrent = () => true) {
     if (!rimario || !targetSuffix) return null;
+
+    // Must not be in the middle of an incomplete word, apostrophe, or hyphen
+    if (!isReadyForWordAppend(partialVerse)) return null;
+
+    const currentSyllables = countItalianSyllables(partialVerse);
+    if (currentSyllables < 7 && partialVerse.length < 24) return null;
 
     // Get candidate rhyme words from rimario
     const exactWords = getRhymeFamilies(targetSuffix);
     if (!exactWords.length) return null;
 
-    // Filter out already-used rhyme words
+    // Filter out already-used rhyme words in this canto if possible
     const availableExact = exactWords.filter(w => !usedRhymeWords.has(w));
-    if (!availableExact.length && exactWords.length > 0) {
-        // All words used; allow reuse but still score them
-        availableExact.push(...exactWords);
+    const pool = availableExact.length > 0 ? availableExact : exactWords;
+
+    const prefixSpace = partialVerse.endsWith(' ') ? '' : ' ';
+
+    // Pre-calculate meter deviation for all candidates
+    const candidates = [];
+    for (const word of pool) {
+        const fullLine = partialVerse + prefixSpace + word;
+        const syllables = countItalianSyllables(fullLine);
+        const meterDev = Math.abs(syllables - 11);
+        candidates.push({
+            word,
+            fullLine,
+            syllables,
+            meterDev
+        });
     }
 
-    // Also collect assonance candidates (same vowels in suffix, different consonants)
-    const targetVowels = targetSuffix.replace(/[^aeiou]/g, '');
-    const assonanceCandidates = [];
-    if (rimario && targetVowels.length >= 2) {
-        for (const [suffix, words] of Object.entries(rimario)) {
-            if (suffix === targetSuffix) continue;
-            const suffixVowels = suffix.replace(/[^aeiou]/g, '');
-            if (suffixVowels === targetVowels) {
-                for (const w of words) {
-                    if (!usedRhymeWords.has(w)) {
-                        assonanceCandidates.push({ word: w, suffix, type: 'assonance' });
-                    }
-                }
-            }
-        }
+    // Filter by meter: prefer meterDev === 0 (exactly 11), then meterDev <= 1 (10 or 12)
+    let viable = candidates.filter(c => c.meterDev === 0);
+    if (!viable.length) {
+        viable = candidates.filter(c => c.meterDev <= 1);
+    }
+    if (!viable.length) {
+        viable = candidates.slice(0, 10);
     }
 
-    // Score exact candidates
+    // Score top candidates with the model (cap at 6 for rapid responsiveness)
+    const toScore = viable.slice(0, 6);
     const scored = [];
-    const limit = Math.min(availableExact.length, FORCED_MAX_CANDIDATES);
 
-    for (let i = 0; i < limit; i++) {
+    for (let i = 0; i < toScore.length; i++) {
         if (!isSearchCurrent()) return { canceled: true };
-
-        const word = availableExact[i];
-        const tokenIds = encodeWordEnding(word);
-        const fullLine = partialVerse + ' ' + word;
-        const syllables = countItalianSyllables(fullLine);
-        const meterDev = Math.abs(syllables - 11);
+        const cand = toScore[i];
+        const tokenIds = encode(prefixSpace + cand.word + '\n');
         const logProb = await scoreTokenSequence(context, tokenIds);
-
         scored.push({
-            word,
+            ...cand,
             tokenIds,
-            logProb,
-            syllables,
-            meterDev,
-            type: 'exact',
-            line: fullLine
+            logProb
         });
     }
 
-    // Score assonance candidates (fewer, only if exact fails)
-    const assonanceScored = [];
-    const assonanceLimit = Math.min(assonanceCandidates.length, 10);
-    for (let i = 0; i < assonanceLimit; i++) {
-        if (!isSearchCurrent()) return { canceled: true };
+    if (!scored.length) return null;
 
-        const { word } = assonanceCandidates[i];
-        const tokenIds = encodeWordEnding(word);
-        const fullLine = partialVerse + ' ' + word;
-        const syllables = countItalianSyllables(fullLine);
-        const meterDev = Math.abs(syllables - 11);
-        const logProb = await scoreTokenSequence(context, tokenIds);
+    // Rank candidates: model log-probability + bonus for exact 11 syllables
+    scored.sort((a, b) => {
+        const aMeterBonus = a.meterDev === 0 ? 3.0 : (a.meterDev === 1 ? 1.0 : -5.0);
+        const bMeterBonus = b.meterDev === 0 ? 3.0 : (b.meterDev === 1 ? 1.0 : -5.0);
+        return (b.logProb + bMeterBonus) - (a.logProb + aMeterBonus);
+    });
 
-        assonanceScored.push({
-            word,
-            tokenIds,
-            logProb,
-            syllables,
-            meterDev,
-            type: 'assonance',
-            line: fullLine
-        });
-    }
-
-    // Progressive fallback selection
-    const rankByProb = (a, b) => b.logProb - a.logProb;
-
-    // Level 1: exact rhyme + exactly 11 syllables
-    let best = scored.filter(c => c.meterDev === FORCED_METER_TOLERANCE_TIGHT)
-        .sort(rankByProb)[0];
-    if (best) {
-        return buildForcedResult(best, 'exact+11');
-    }
-
-    // Level 2: exact rhyme + 10-12 syllables
-    best = scored.filter(c => c.meterDev <= FORCED_METER_TOLERANCE_LOOSE)
-        .sort(rankByProb)[0];
-    if (best) {
-        return buildForcedResult(best, 'exact+10-12');
-    }
-
-    // Level 3: assonance + 11 syllables
-    best = assonanceScored.filter(c => c.meterDev === FORCED_METER_TOLERANCE_TIGHT)
-        .sort(rankByProb)[0];
-    if (best) {
-        return buildForcedResult(best, 'assonance+11');
-    }
-
-    // Level 4: forced insertion of best exact word (ignore meter)
-    best = scored.sort(rankByProb)[0];
-    if (best) {
-        return buildForcedResult(best, 'forced-insert');
-    }
-
-    // Level 5: nothing found
-    return null;
+    const best = scored[0];
+    const level = best.meterDev === 0 ? 'exact+11' : (best.meterDev === 1 ? 'exact+10-12' : 'forced-insert');
+    return buildForcedResult(best, level, prefixSpace);
 }
 
-function buildForcedResult(candidate, level) {
-    const ending = getEndingSound(candidate.line);
+function buildForcedResult(candidate, level, prefixSpace = ' ') {
+    const ending = getEndingSound(candidate.fullLine);
     return {
         tokenIds: candidate.tokenIds,
-        text: ' ' + candidate.word + '\n',
+        text: prefixSpace + candidate.word + '\n',
         logProbability: candidate.logProb,
         rank: candidate.logProb,
         validation: {
             accepted: true,
-            line: candidate.line,
+            line: candidate.fullLine,
             ending,
-            meterScore: getVerseMeterScore(candidate.line),
+            meterScore: getVerseMeterScore(candidate.fullLine),
             forcedLevel: level,
             word: candidate.word
         }
@@ -366,40 +353,81 @@ async function generateNext(context) {
     const targetEnding = rhymeTarget >= 0 && rhymeTarget < verseEndings.length ?
         verseEndings[rhymeTarget] : '';
 
+    // Safety cutoff: never allow any verse to exceed 48 characters (Dante average is ~36, max 53)
+    if (partialVerse.length >= 45) {
+        if (targetEnding && rimario) {
+            const urgent = await findForcedRhymeCompletion(context, partialVerse, targetEnding, () => true);
+            if (urgent && !urgent.canceled && urgent.tokenIds) {
+                pendingRhymeTokenQueue = urgent.tokenIds.slice();
+                usedRhymeWords.add(urgent.validation.word);
+                console.log(`[RHYME] URGENT FORCED selected "${urgent.validation.word}" for target "${targetEnding}"`);
+                return pendingRhymeTokenQueue.shift();
+            }
+        }
+        // Force newline to end verse and preserve meter
+        const nlTokens = encode('\n');
+        return nlTokens[0];
+    }
+
+    // Suppress premature newline token if verse is in rhyming mode and hasn't reached minimum length
+    if (danteRhymeMode !== RHYME_MODE_OFF && targetEnding) {
+        const sylCount = countItalianSyllables(partialVerse);
+        if (sylCount < 7 && partialVerse.length < 24) {
+            const nlSet = getNewlineTokenIds();
+            let suppressed = false;
+            for (const nlId of nlSet) {
+                if (probs[nlId] > 0) {
+                    probs[nlId] = 0;
+                    suppressed = true;
+                }
+            }
+            if (suppressed) {
+                let sum = 0;
+                for (let i = 0; i < probs.length; i++) sum += probs[i];
+                if (sum > 0) {
+                    for (let i = 0; i < probs.length; i++) probs[i] /= sum;
+                }
+            }
+        }
+    }
+
     // FORCED mode: use rimario-based completion
-    if (danteRhymeMode === RHYME_MODE_FORCED && targetEnding && partialVerse.length >= RHYME_SEARCH_MIN_CHARS) {
-        const isSearchCurrent = () => isRhymeSearchSnapshotCurrent(invocationSnapshot, {
-            epoch: rhymeGenerationEpoch,
-            mode: danteRhymeMode,
-            verseNumber: currentVerseNumber,
-            contextKey: currentTokens.join(','),
-            generatedText
-        });
+    if (danteRhymeMode === RHYME_MODE_FORCED && targetEnding) {
+        const sylCount = countItalianSyllables(partialVerse);
+        const atWordBoundary = isReadyForWordAppend(partialVerse);
+        const canTrigger = atWordBoundary && (sylCount >= 7 || partialVerse.length >= 24);
 
-        const completion = await findForcedRhymeCompletion(
-            context, partialVerse, targetEnding, isSearchCurrent
-        );
+        if (canTrigger) {
+            const isSearchCurrent = () => isRhymeSearchSnapshotCurrent(invocationSnapshot, {
+                epoch: rhymeGenerationEpoch,
+                mode: danteRhymeMode,
+                verseNumber: currentVerseNumber,
+                contextKey: currentTokens.join(','),
+                generatedText
+            });
 
-        const currentSnapshot = {
-            epoch: rhymeGenerationEpoch,
-            mode: danteRhymeMode,
-            verseNumber: currentVerseNumber,
-            contextKey: currentTokens.join(','),
-            generatedText
-        };
-        if (!isRhymeSearchSnapshotCurrent(invocationSnapshot, currentSnapshot)) {
-            return fallbackToNormalSampling(probs, sample);
+            const completion = await findForcedRhymeCompletion(
+                context, partialVerse, targetEnding, isSearchCurrent
+            );
+
+            const currentSnapshot = {
+                epoch: rhymeGenerationEpoch,
+                mode: danteRhymeMode,
+                verseNumber: currentVerseNumber,
+                contextKey: currentTokens.join(','),
+                generatedText
+            };
+            if (!isRhymeSearchSnapshotCurrent(invocationSnapshot, currentSnapshot)) {
+                return fallbackToNormalSampling(probs, sample);
+            }
+            if (completion && completion.canceled) return fallbackToNormalSampling(probs, sample);
+            if (completion) {
+                pendingRhymeTokenQueue = completion.tokenIds.slice();
+                usedRhymeWords.add(completion.validation.word);
+                console.log(`[RHYME] FORCED selected "${completion.validation.word}" (${completion.validation.forcedLevel}) for target "${targetEnding}"`);
+                return pendingRhymeTokenQueue.shift();
+            }
         }
-        if (completion && completion.canceled) return fallbackToNormalSampling(probs, sample);
-        if (completion) {
-            pendingRhymeTokenQueue = completion.tokenIds.slice();
-            usedRhymeWords.add(completion.validation.word);
-            console.log(`[RHYME] FORCED selected "${completion.validation.word}" (${completion.validation.forcedLevel}) for target "${targetEnding}"`);
-            return pendingRhymeTokenQueue.shift();
-        }
-        // No forced completion found; fall through to normal sampling
-        console.warn(`[RHYME] FORCED found no rhyme word for "${targetEnding}"; using normal sampling.`);
-        return sample(probs);
     }
 
     // SOFT / STRICT mode: beam search

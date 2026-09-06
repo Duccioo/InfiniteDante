@@ -16,14 +16,27 @@ const {
     isRhymeSearchSnapshotCurrent
 } = require('./rhyme.js');
 
+const { isWordBoundary } = require('./rhyme.js');
+
 assert.strictEqual(getEndingSound('La nostra vita!'), 'ita');
 assert.strictEqual(getEndingSound('L\'amor è'), 'e');
 assert.strictEqual(getEndingSound('perché'), 'e');
 assert.strictEqual(getEndingSound('occhio'), 'occhio');
 
+// Phonetic & Dante Rhyme tests
 assert.strictEqual(doTheyRhyme(getEndingSound('canto'), getEndingSound('vento')), false,
     'matching only the final two letters is not a strict rhyme');
 assert.strictEqual(doTheyRhyme(getEndingSound('vita'), getEndingSound('smarrita')), true);
+assert.strictEqual(doTheyRhyme(getEndingSound('oscura'), getEndingSound('paura')), true,
+    'oscura and paura must rhyme in Dante (hiatus pa-u-ra)');
+assert.strictEqual(doTheyRhyme(getEndingSound('dura'), getEndingSound('paura')), true);
+assert.strictEqual(doTheyRhyme(getEndingSound('trovai'), getEndingSound('intrai')), true,
+    'trovai and intrai must rhyme on oxytone -ai');
+assert.strictEqual(doTheyRhyme(getEndingSound('desio'), getEndingSound('oblio')), true,
+    'desio and oblio must rhyme on tonic -io');
+assert.strictEqual(doTheyRhyme(getEndingSound('punto'), getEndingSound('giunto')), true,
+    'punto and giunto must rhyme on -unto (diacritic i)');
+
 assert.ok(getExactEndingProgressScore('Nel mezzo del cammin di nostra vita', 'ita') >
     getExactEndingProgressScore('Nel mezzo del cammin di nostra vento', 'ita'),
     'an exact assembled ending must outrank non-rhyme progress');
@@ -32,7 +45,20 @@ assert.strictEqual(doTheyRhyme('asa', 'ana'), false, 'assonance must not satisfy
 
 assert.deepStrictEqual([0, 1, 2, 3, 4, 5, 6, 7].map(getRhymeTarget),
     [-1, -1, 0, 1, -1, 3, 4, -1]);
+
+// Meter tests with sinalefe
 assert.strictEqual(countItalianSyllables('Nel mezzo del cammin di nostra vita'), 11);
+assert.strictEqual(countItalianSyllables('mi ritrovai per una selva oscura'), 11,
+    'sinalefe between selva and oscura must produce 11 syllables');
+assert.strictEqual(countItalianSyllables('ché la diritta via era smarrita'), 11,
+    'sinalefe between via and era must produce 11 syllables');
+assert.strictEqual(countItalianSyllables('Ahi quanto a dir qual era è cosa dura'), 11);
+
+// Word boundary tests
+assert.strictEqual(isWordBoundary('Nel mezzo '), true);
+assert.strictEqual(isWordBoundary('Nel mezzo'), false);
+assert.strictEqual(isWordBoundary('selva,'), true);
+
 
 const continuation = decodeTokenByteSequences([
     new Uint8Array([0x76, 0x69]), // vi

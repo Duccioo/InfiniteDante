@@ -1,0 +1,11 @@
+{
+  "model": "model_dpo_int8.onnx",
+  "tokens_per_second": 145.89,
+  "total_tokens": 500,
+  "total_time_seconds": 3.43,
+  "total_verses_evaluated": 43,
+  "mean_syllables_per_verse": 10.07,
+  "syllable_std_dev": 2.92,
+  "perfect_11_syllable_percent": 37.2,
+  "average_terzina_score": 0.375
+}

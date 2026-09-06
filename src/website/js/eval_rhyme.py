@@ -145,24 +145,39 @@ def generate_canto(mode="FORCED", target_verses=9, prompt="Nel mezzo del cammin 
         current_partial_verse = lines[-1]
 
         if mode == "FORCED" and target_rhyme_idx >= 0 and target_rhyme_idx < len(verse_endings):
-            if len(current_partial_verse) >= 22:
+            at_boundary = not current_partial_verse or current_partial_verse[-1] in " .,;:!?—–\n"
+            syl_count = syllable_counter.count_verse_syllables(current_partial_verse) if current_partial_verse else 0
+            if at_boundary and (syl_count >= 7 or len(current_partial_verse) >= 24):
                 target_suffix = verse_endings[target_rhyme_idx]
                 candidates = RIMARIO.get(target_suffix, [])
-                available = [w for w in candidates if w not in used_rhyme_words]
+                available = [w for w in candidates if w.lower() not in used_rhyme_words]
                 if not available and candidates:
                     available = candidates
 
                 if available:
+                    prefix_space = "" if current_partial_verse.endswith(" ") else " "
                     # Pick candidate word with best syllable fit & highest model score
                     best_word = None
                     best_tokens = None
                     best_score = -float("inf")
 
-                    for word in available[:20]:
-                        cand_tokens = encode(" " + word + "\n")
-                        cand_line = current_partial_verse + " " + word
-                        s_count = syllable_counter.count_verse_syllables(cand_line)
-                        meter_penalty = abs(s_count - 11) * 2.0
+                    # Pre-filter for meter fit
+                    pool = []
+                    for w in available:
+                        c_line = current_partial_verse + prefix_space + w
+                        sc = syllable_counter.count_verse_syllables(c_line)
+                        dev = abs(sc - 11)
+                        pool.append((w, c_line, sc, dev))
+
+                    viable = [c for c in pool if c[3] == 0]
+                    if not viable:
+                        viable = [c for c in pool if c[3] <= 1]
+                    if not viable:
+                        viable = pool[:15]
+
+                    for word, cand_line, s_count, meter_dev in viable[:25]:
+                        cand_tokens = encode(prefix_space + word + "\n")
+                        meter_penalty = meter_dev * 2.0
                         
                         logits = run_inference(tokens + cand_tokens[:-1])
                         log_p = math.log(softmax(logits)[cand_tokens[-1]] + 1e-10) - meter_penalty
@@ -174,7 +189,7 @@ def generate_canto(mode="FORCED", target_verses=9, prompt="Nel mezzo del cammin 
 
                     if best_word:
                         tokens.extend(best_tokens)
-                        used_rhyme_words.add(best_word)
+                        used_rhyme_words.add(best_word.lower())
                         full_gen = decode(tokens)
                         verses = [v for v in full_gen.strip().split("\n") if v.strip()]
                         verse_endings = [detector.get_rhyme_suffix(v) for v in verses]
@@ -185,7 +200,8 @@ def generate_canto(mode="FORCED", target_verses=9, prompt="Nel mezzo del cammin 
         probs = softmax(logits)
 
         # Suppress newline (token 10) on rhymed target verses until FORCED mode triggers
-        if mode == "FORCED" and target_rhyme_idx >= 0 and len(current_partial_verse) < 22:
+        syl_count = syllable_counter.count_verse_syllables(current_partial_verse) if current_partial_verse else 0
+        if mode == "FORCED" and target_rhyme_idx >= 0 and (syl_count < 7 or len(current_partial_verse) < 24):
             probs[10] = 0.0
             probs /= np.sum(probs)
 

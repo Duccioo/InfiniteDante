@@ -3,10 +3,11 @@
  * =========
  * Dante terza-rima helpers with rimario-based rhyme validation.
  *
- * Key improvement over the previous version: rhyme suffixes are extracted
- * from the stressed (tonic) vowel — not the penultimate vowel character —
- * using syllable-aware nucleus splitting.  When rimario.json is loaded,
- * known words get their exact suffix from the dictionary.
+ * Provides:
+ * - Accurate Italian poetic phonetics & rhyme suffix extraction
+ * - Metric syllable scansion with sinalefe
+ * - Rimario loading and index management
+ * - Rhyme candidate evaluation and meter scoring
  */
 
 // Italian diphthongs (count as one syllable nucleus)
@@ -23,6 +24,35 @@ const ACCENTED_MAP = {
 const ACCENTED_VOWELS_SET = new Set(Object.keys(ACCENTED_MAP));
 const ALL_VOWELS = 'aeiouàèéìíòóùú';
 
+// Explicit known hiatus stems where stress is on the hiatus vowel
+const KNOWN_HIATUS_STEMS = {
+    'paura': 'ura',
+    'paure': 'ure',
+};
+
+// Words ending in tonic -io (de-sì-o, o-blì-o, r-ì-o, na-tì-o, add-ì-o)
+const TONIC_IO_WORDS = new Set([
+    'desio', 'oblio', 'rio', 'natio', 'mormorio', 'gentilio', 'pendio', 'addio', 
+    'fio', 'disio', 'campio', 'brischio', 'restio', 'brusio', 'ronzio', 'calpestio'
+]);
+
+// Words ending in tonic -ia (v-ì-a, pr-ì-a, m-ì-a, s-ì-a, com-pa-gn-ì-a, fol-l-ì-a, ecc.)
+const TONIC_IA_WORDS = new Set([
+    'via', 'pria', 'mia', 'sia', 'follia', 'armonia', 'poesia', 'cortesia',
+    'allegria', 'compagnia', 'balia', 'ria', 'magia', 'fantasia', 'ironia',
+    'bugia', 'corsia', 'fabbria', 'malia', 'villania', 'gelosia', 'fiancheria',
+    'fantesia', 'baratteria', 'idropesia', 'epia', 'abbadia', 'dia', 'disvia',
+    'invia', 'devia', 'godia', 'udia', 'sentia', 'partia', 'uscia', 'salia',
+    'smarria', 'maria', 'girolomia', 'tenia', 'vedia', 'faria', 'daria', 'saria',
+    'avria', 'poria', 'credea', 'solia', 'arderia', 'valia', 'pazia'
+]);
+
+const NON_TONIC_IA_WORDS = new Set([
+    'grazia', 'audacia', 'minaccia', 'angoscia', 'striscia', 'lascia', 'faccia',
+    'provincia', 'materia', 'memoria', 'gloria', 'storia', 'vittoria', 'notizia',
+    'sentenzia', 'ingiuria', 'ignominia', 'calunnia', 'curia', 'furia'
+]);
+
 function normalizeItalian(text) {
     return String(text || '')
         .toLowerCase()
@@ -32,21 +62,39 @@ function normalizeItalian(text) {
 
 /**
  * Split a word into syllable nuclei (vowels/diphthongs).
- * Each nucleus is [startPos, endPos].  Diphthongs merge into one nucleus;
+ * Each nucleus is [startPos, endPos]. Diphthongs merge into one nucleus;
  * accented vowels force a hiatus.
+ * Diacritic 'i' after c/g before a/o/u (giunto, gioco) is skipped.
  */
 function splitSyllableNuclei(word) {
-    const plain = Array.from(word).map(c => ACCENTED_MAP[c] || c).join('');
+    let plain = Array.from(word).map(c => ACCENTED_MAP[c] || c).join('').toLowerCase();
+    // Silent 'h' in Italian is never pronounced (ahi -> ai, ho -> o, etc.)
+    plain = plain.replace(/h/g, '');
     const nuclei = [];
     let i = 0;
     while (i < plain.length) {
+
         if (ALL_VOWELS.includes(plain[i])) {
+            // Check diacritic 'i' after c/g before a/o/u
+            if (plain[i] === 'i' && i > 0 && (plain[i-1] === 'c' || plain[i-1] === 'g') &&
+                i + 1 < plain.length && (plain[i+1] === 'a' || plain[i+1] === 'o' || plain[i+1] === 'u')) {
+                i++;
+                continue;
+            }
+
             const start = i;
             while (i + 1 < plain.length &&
                 ALL_VOWELS.includes(plain[i + 1]) &&
                 DIPHTHONGS_SET.has(plain[i] + plain[i + 1]) &&
                 !ACCENTED_VOWELS_SET.has(word[i]) &&
                 !ACCENTED_VOWELS_SET.has(word[i + 1])) {
+                const pair = plain[i] + plain[i + 1];
+                if (pair === 'ia' || pair === 'io' || pair === 'ie' || pair === 'ea' || pair === 'eo' || pair === 'oa') {
+                    const cleanW = word.toLowerCase();
+                    if (TONIC_IO_WORDS.has(cleanW) || TONIC_IA_WORDS.has(cleanW)) {
+                        break;
+                    }
+                }
                 i++;
             }
             nuclei.push([start, i]);
@@ -61,31 +109,54 @@ function splitSyllableNuclei(word) {
 /**
  * Extract the rhyme suffix from the stressed vowel to end of word.
  *
- * 1. If the word contains an accented vowel, stress is there.
- * 2. Otherwise assume paroxytone (stress on penultimate syllable nucleus).
- * 3. Accents are normalized to plain vowels in the returned suffix.
+ * 1. Check known explicit poetic hiatus words (paura -> ura, desio -> io, via -> ia).
+ * 2. If the word contains an accented vowel, stress is there.
+ * 3. Check oxytone diphthong endings (-ai, -ei, -ui, -oi: trovai -> ai).
+ * 4. Check hiatus pattern: -aura -> -ura (paura).
+ * 5. Otherwise assume paroxytone (stress on penultimate syllable nucleus).
+ * 6. Accents are normalized to plain vowels in the returned suffix.
  */
 function getStressedSuffix(word) {
-    word = String(word || '').toLowerCase().replace(/[^a-zàèéìíòóùú]/g, '');
-    if (word.length < 2) return ACCENTED_MAP[word] || word;
+    const w = String(word || '').toLowerCase().replace(/[^a-zàèéìíòóùú]/g, '');
+    if (w.length < 2) return ACCENTED_MAP[w] || w;
 
-    // 1. Explicit accent
-    for (let i = 0; i < word.length; i++) {
-        if (ACCENTED_VOWELS_SET.has(word[i])) {
+    // 1. Explicit stems and whole words
+    if (KNOWN_HIATUS_STEMS[w]) return KNOWN_HIATUS_STEMS[w];
+    if (TONIC_IO_WORDS.has(w)) return 'io';
+    if (TONIC_IA_WORDS.has(w) || (w.endsWith('ia') && w.length <= 4)) return 'ia';
+    if (w.endsWith('ia') && w.length >= 4) {
+        if (!NON_TONIC_IA_WORDS.has(w) && (w.endsWith('ria') || w.endsWith('dia') || w.endsWith('tia') || w.endsWith('via') || w.endsWith('nia') || w.endsWith('lia'))) {
+            return 'ia';
+        }
+    }
+
+    // 2. Explicit accent
+    for (let i = 0; i < w.length; i++) {
+        if (ACCENTED_VOWELS_SET.has(w[i])) {
             let suffix = '';
-            for (let j = i; j < word.length; j++) {
-                suffix += ACCENTED_MAP[word[j]] || word[j];
+            for (let j = i; j < w.length; j++) {
+                suffix += ACCENTED_MAP[w[j]] || w[j];
             }
             return suffix;
         }
     }
 
-    // 2. Penultimate syllable nucleus (diphthong-aware)
-    const nuclei = splitSyllableNuclei(word);
-    if (!nuclei.length) return word.slice(-3);
+    // 3. Oxytone (tronca) verbal endings: -ai, -ei, -ui, -oi
+    if (w.length >= 3 && (w.endsWith('ai') || w.endsWith('ei') || w.endsWith('ui') || w.endsWith('oi'))) {
+        return w.slice(-2);
+    }
+
+    // 4. Hiatus pattern: -aura (paura -> ura)
+    if (w.endsWith('aura') && w !== 'aura' && !w.endsWith('laura')) {
+        return 'ura';
+    }
+
+    // 5. Penultimate syllable nucleus (diphthong-aware)
+    const nuclei = splitSyllableNuclei(w);
+    if (!nuclei.length) return w.slice(-3);
 
     const stressStart = nuclei.length >= 2 ? nuclei[nuclei.length - 2][0] : nuclei[0][0];
-    return word.slice(stressStart);
+    return w.slice(stressStart);
 }
 
 /**
@@ -145,34 +216,70 @@ function getAssonanceScore(ending1, ending2) {
 }
 
 /**
- * Approximate vowel-group syllables for ranking and broad plausibility guards.
+ * Count syllables in a single word.
+ */
+function countWordSyllables(word) {
+    word = String(word || '').toLowerCase().replace(/[^a-zàèéìíòóùú']/g, '');
+    if (!word) return 0;
+    const nuclei = splitSyllableNuclei(word);
+    return Math.max(1, nuclei.length);
+}
+
+/**
+ * Count Italian poetic syllables in a line of poetry, applying SINALEFE.
+ * Sinalefe: elision between a word ending in a vowel (or apostrophe)
+ * and the next word beginning with a vowel.
  */
 function countItalianSyllables(text) {
-    const words = normalizeItalian(text).match(/[a-z]+/g) || [];
-    let count = 0;
-    for (const word of words) {
-        const groups = word.match(/[aeiou]+/g);
-        count += groups ? groups.length : 0;
+    text = String(text || '').trim();
+    if (!text) return 0;
+    const words = text.match(/[a-zàèéìíòóùú']+/gi) || [];
+    if (!words.length) return 0;
+
+    const VOWEL_RE = /[aeiouàèéìíòóùú]/i;
+    let total = 0;
+
+    for (let i = 0; i < words.length; i++) {
+        const w = words[i].toLowerCase();
+        total += countWordSyllables(w);
+
+        // Sinalefe between word i and word i + 1
+        if (i < words.length - 1) {
+            const nextW = words[i + 1].toLowerCase();
+            const currEndsVowel = w.endsWith("'") || VOWEL_RE.test(w.slice(-1));
+            const nextStartsVowel = VOWEL_RE.test(nextW[0]);
+            if (currEndsVowel && nextStartsVowel) {
+                total -= 1; // Sinalefe: vowels merge into one metric syllable
+            }
+        }
     }
-    return count;
+    return Math.max(1, total);
 }
 
+/**
+ * Score line meter adherence to Italian endecasillabo (11 syllables).
+ */
 function getVerseMeterScore(line) {
     const syllables = countItalianSyllables(line);
-    if (syllables < 5 || syllables > 18) return 0;
-    return Math.max(0, 1 - Math.abs(syllables - 11) / 10);
+    if (syllables < 8 || syllables > 15) return 0;
+    const deviation = Math.abs(syllables - 11);
+    if (deviation === 0) return 1.0;
+    if (deviation === 1) return 0.8;
+    if (deviation === 2) return 0.5;
+    return 0.2;
 }
 
 /**
- * Check that text ends on a word boundary (the last word is complete,
- * not a BPE fragment).  Accepts: word + optional punctuation + newline.
+ * Check if the given text currently ends on a complete word boundary
+ * (i.e. whitespace, punctuation, or newline — not mid-word or mid-BPE-token).
  */
 function isWordBoundary(text) {
-    return /[a-zàèéìíòóùú][.,;:!?…]*\n?$/.test(text.trimEnd());
+    if (!text) return true;
+    return /[\s.,;:!?…—–]$/.test(text) || text.endsWith('\n');
 }
 
 /**
- * Load rimario.json and build the inverse index (word → suffix).
+ * Load rimario.json and build the inverse index (word -> suffix).
  * Returns a promise that resolves to the rimario object.
  */
 async function loadRimario(url) {
@@ -218,7 +325,6 @@ function decodeTokenByteSequences(byteSequences, pendingPrefix = new Uint8Array(
         bytes.set(chunk, offset);
         offset += chunk.length;
     }
-    // Mirror tokenizer.js: trailing incomplete UTF-8 belongs to the next token.
     let validEnd = bytes.length;
     for (let index = Math.max(0, bytes.length - 4); index < bytes.length; index++) {
         const byte = bytes[index];
@@ -265,10 +371,6 @@ function fallbackToNormalSampling(probs, sampler) {
 
 /**
  * Validate a decoded continuation only once it has ended the current line.
- * A candidate may contain text after its one newline, but never a second line.
- *
- * KEY IMPROVEMENT: the last word before the newline must be a complete word
- * (checked via isWordBoundary), not a BPE fragment.
  */
 function evaluateCompletedRhymeContinuation(partialVerse, continuation, targetEnding) {
     const firstNewline = continuation.indexOf('\n');
@@ -280,7 +382,6 @@ function evaluateCompletedRhymeContinuation(partialVerse, continuation, targetEn
     const lineEnd = continuation.slice(0, firstNewline);
     const line = `${partialVerse}${lineEnd}`;
 
-    // Verify the line ends on a word boundary, not mid-BPE-token
     if (lineEnd.length > 0 && !/[a-zàèéìíòóùú]/.test(lineEnd.slice(-1).replace(/[.,;:!?…]/g, ''))) {
         return { accepted: false, reason: 'no-word-ending', line };
     }
@@ -308,6 +409,7 @@ function getCurrentPartialVerse() {
 if (typeof module !== 'undefined' && module.exports) {
     module.exports = {
         countItalianSyllables,
+        countWordSyllables,
         decodeTokenByteSequences,
         doTheyRhyme,
         evaluateCompletedRhymeContinuation,
