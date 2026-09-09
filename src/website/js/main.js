@@ -11,7 +11,7 @@
 
 async function initialize() {
     try {
-        statusEl.textContent = 'LOADING MODEL...';
+        statusEl.textContent = 'caricamento modello...';
         statusEl.classList.add('loading');
 
         // Register Service Worker for offline capability & caching
@@ -48,7 +48,7 @@ async function initialize() {
         activeModelType = 'FP32';
         activeProvider = 'WASM';
 
-        statusEl.textContent = `CARICAMENTO RETE NEURALE (WASM · ${activeModelType})...`;
+        statusEl.textContent = 'caricamento modello...';
         session = await ort.InferenceSession.create(modelPath, {
             executionProviders: ['wasm'],
             graphOptimizationLevel: 'all'
@@ -59,17 +59,17 @@ async function initialize() {
         startBtn.disabled = false;
         const benchmarkBtn = document.getElementById('benchmark-btn');
         if (benchmarkBtn) benchmarkBtn.disabled = false;
-        statusEl.textContent = 'CARICAMENTO RIMARIO...';
+        statusEl.textContent = 'caricamento rimario...';
 
         // Load rimario (non-blocking for core functionality)
         await loadRimario('../../model/rimario.json');
 
-        statusEl.textContent = `PRONTO — PREMI AVVIA (${activeProvider} · ${activeModelType})`;
+        statusEl.textContent = 'pronto';
         statusEl.classList.remove('loading');
 
     } catch (error) {
         console.error('Initialization error:', error);
-        statusEl.textContent = 'ERROR: ' + error.message;
+        statusEl.textContent = 'errore: ' + error.message;
         statusEl.classList.remove('loading');
     }
 }
@@ -78,132 +78,14 @@ async function initialize() {
 // Extended Feature Actions
 // ============================================================================
 
-function startWithCustomIncipit() {
-    const input = document.getElementById('incipit-input');
-    if (!input) return;
-    const customVerse = input.value.trim();
-    if (!customVerse) return;
-
-    clearText();
-    const ending = getEndingSound(customVerse);
-    generatedText = `${customVerse}\n`;
-    charsSinceLastCanto = generatedText.length;
-
-    if (showMetricAnalysis) {
-        renderFormattedText();
-    } else {
-        textOutput.textContent = generatedText;
-    }
-
-    verseEndings = [ending];
-    currentVerseNumber = 1;
-    resetRhymeSearchAttempts();
-    input.value = '';
-
-    console.log(`[INCIPIT] Started with custom verse: "${customVerse}", rhyme ending: "${ending}"`);
-    startGeneration();
-}
-
-function toggleSpeech() {
-    const speakBtn = document.getElementById('speak-btn');
-    if (!('speechSynthesis' in window)) {
-        alert('Sintesi vocale Web Speech API non supportata da questo browser.');
-        return;
-    }
-    if (isSpeaking) {
-        window.speechSynthesis.cancel();
-        isSpeaking = false;
-        if (speakBtn) {
-            speakBtn.textContent = '🗣 recita';
-            speakBtn.classList.remove('btn-speaking');
-        }
-        return;
-    }
-
-    const verses = generatedText.split('\n').map(v => v.trim()).filter(v => v.length > 0 && !v.startsWith('CANTO'));
-    if (verses.length === 0) return;
-
-    isSpeaking = true;
-    if (speakBtn) {
-        speakBtn.textContent = '⏹ ferma';
-        speakBtn.classList.add('btn-speaking');
-    }
-
-    let verseIdx = 0;
-    function speakNext() {
-        if (!isSpeaking || verseIdx >= verses.length) {
-            isSpeaking = false;
-            if (speakBtn) {
-                speakBtn.textContent = '🗣 recita';
-                speakBtn.classList.remove('btn-speaking');
-            }
-            return;
-        }
-
-        const raw = verses[verseIdx].replace(/\[[A-Z]\]/g, '').trim();
-        const utter = new SpeechSynthesisUtterance(raw);
-        utter.lang = 'it-IT';
-        utter.rate = 0.88;
-        utter.pitch = 0.95;
-
-        const voices = window.speechSynthesis.getVoices();
-        const itVoice = voices.find(v => v.lang && (v.lang.startsWith('it') || v.name.toLowerCase().includes('italian')));
-        if (itVoice) utter.voice = itVoice;
-
-        utter.onend = () => {
-            verseIdx++;
-            setTimeout(speakNext, 350);
-        };
-        utter.onerror = () => {
-            isSpeaking = false;
-            if (speakBtn) {
-                speakBtn.textContent = '🗣 recita';
-                speakBtn.classList.remove('btn-speaking');
-            }
-        };
-
-        window.speechSynthesis.speak(utter);
-    }
-    speakNext();
-}
-
 function toggleMetricAnalysis() {
     showMetricAnalysis = !showMetricAnalysis;
     const metricBtn = document.getElementById('metric-toggle-btn');
     if (metricBtn) {
         metricBtn.classList.toggle('active', showMetricAnalysis);
-        metricBtn.textContent = showMetricAnalysis ? '📐 nascondi metrica' : '📐 metrica';
+        metricBtn.textContent = showMetricAnalysis ? 'Nascondi metrica' : 'Metrica';
     }
     renderFormattedText();
-}
-
-function copyPoetry() {
-    if (!generatedText.trim()) return;
-    const lines = generatedText.split('\n').filter(l => l.trim().length > 0);
-    const tercets = [];
-    for (let i = 0; i < lines.length; i += 3) {
-        tercets.push(lines.slice(i, i + 3).join('\n'));
-    }
-    const formatted = tercets.join('\n\n');
-    navigator.clipboard.writeText(formatted).then(() => {
-        const copyBtn = document.getElementById('copy-btn');
-        if (copyBtn) {
-            const old = copyBtn.textContent;
-            copyBtn.textContent = '✓ Copiato!';
-            setTimeout(() => { copyBtn.textContent = old; }, 2000);
-        }
-    });
-}
-
-function exportPoetry() {
-    if (!generatedText.trim()) return;
-    const blob = new Blob([generatedText], { type: 'text/markdown;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `canto_dantesco_${Date.now()}.md`;
-    a.click();
-    URL.revokeObjectURL(url);
 }
 
 // ============================================================================
@@ -235,35 +117,25 @@ function setupEventListeners() {
     ctxContent = document.getElementById('ctx-content');
     ctxTokenCount = document.getElementById('ctx-token-count');
 
-    // Control buttons
-    startBtn.addEventListener('click', startGeneration);
-    stopBtn.addEventListener('click', stopGeneration);
-    clearBtn.addEventListener('click', clearText);
-
-    // Extended Feature buttons
-    const incipitBtn = document.getElementById('incipit-btn');
-    const incipitInput = document.getElementById('incipit-input');
-    if (incipitBtn) incipitBtn.addEventListener('click', startWithCustomIncipit);
-    if (incipitInput) {
-        incipitInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                startWithCustomIncipit();
+    // Single toggle button for start / pause
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            if (isGenerating) {
+                stopGeneration();
+            } else {
+                startGeneration();
             }
         });
     }
-
-    const speakBtn = document.getElementById('speak-btn');
-    if (speakBtn) speakBtn.addEventListener('click', toggleSpeech);
+    if (stopBtn) {
+        stopBtn.addEventListener('click', stopGeneration);
+    }
+    if (clearBtn) {
+        clearBtn.addEventListener('click', clearText);
+    }
 
     const metricBtn = document.getElementById('metric-toggle-btn');
     if (metricBtn) metricBtn.addEventListener('click', toggleMetricAnalysis);
-
-    const copyBtn = document.getElementById('copy-btn');
-    if (copyBtn) copyBtn.addEventListener('click', copyPoetry);
-
-    const exportBtn = document.getElementById('export-btn');
-    if (exportBtn) exportBtn.addEventListener('click', exportPoetry);
     
     // Benchmark button
     const benchmarkBtn = document.getElementById('benchmark-btn');
@@ -284,7 +156,7 @@ function setupEventListeners() {
             showContextWindow = !showContextWindow;
             contextToggleBtn.classList.toggle('active', showContextWindow);
             contextWindowDisplay.classList.toggle('visible', showContextWindow);
-            contextToggleBtn.textContent = showContextWindow ? '\u2B1B hide context' : '\u2B1A show context';
+            contextToggleBtn.textContent = showContextWindow ? 'Nascondi contesto' : 'Mostra contesto';
         });
     }
 
@@ -297,11 +169,12 @@ function setupEventListeners() {
         rhymeToggleBtn.classList.toggle('active', active);
         const forced = danteRhymeMode === RHYME_MODE_FORCED;
         const strict = danteRhymeMode === RHYME_MODE_STRICT;
-        rhymeStatus.textContent = forced ? 'FORCED (RIMARIO)' :
-            strict ? 'STRICT (BEST-EFFORT)' : danteRhymeMode;
-        rhymeToggleBtn.textContent = forced ? '\uD83C\uDFAD terza rima FORCED (rimario)' :
-            strict ? '\uD83C\uDFAD terza rima STRICT (best-effort)' :
-            `\uD83C\uDFAD terza rima ${danteRhymeMode} (ABA BCB)`;
+        const soft = danteRhymeMode === RHYME_MODE_SOFT;
+        rhymeStatus.textContent = forced ? 'Forzata (rimario)' :
+            strict ? 'Rigorosa' : soft ? 'Morbida' : 'Disattivata';
+        rhymeToggleBtn.textContent = forced ? 'Terza rima: Forzata' :
+            strict ? 'Terza rima: Rigorosa' :
+            soft ? 'Terza rima: Morbida' : 'Terza rima: Spenta';
     };
 
     if (rhymeToggleBtn) {

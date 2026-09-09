@@ -5,62 +5,46 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Infinite Dante · La Commedia Infinita</title>
-    <meta name="description" content="Generazione perpetua della Divina Commedia con intelligenza artificiale, rispetto della terza rima dantesca e metrica endecasillaba.">
+    <meta name="description" content="Generazione perpetua della Divina Commedia nel rispetto della terza rima dantesca e della metrica endecasillaba.">
     <link rel="manifest" href="manifest.json">
-    <meta name="theme-color" content="#d4a056">
+    <meta name="theme-color" content="#12100e">
 
-    <!-- ONNX Runtime Web (with WebGPU & WASM support) -->
+    <!-- ONNX Runtime Web -->
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.17.0/dist/ort.webgpu.min.js"></script>
 
-    <!-- Google Fonts: Cinzel (Renaissance titling), Cormorant Garamond (Florentine poetry), JetBrains Mono (Metrics) -->
+    <!-- Google Fonts: Cinzel (Titling), Cormorant Garamond (Poesia), JetBrains Mono (Metrica) -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link
-        href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400;1,500;1,600&family=JetBrains+Mono:ital,wght@0,300;0,400;0,500;1,400&display=swap"
-        rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;600;700&family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
 
     <style>
         /* ================================================================
-           CSS VARIABLES & FLORENTINE PALETTE
+           DESIGN SYSTEM: EDITORIALE & TIPOGRAFICO
            ================================================================ */
         :root {
-            --bg-void: #090807;
-            --bg-canvas: #0e0c0a;
-            --bg-card: #13100d;
-            --bg-controls: #0c0a08;
-            --bg-surface: #191511;
-            --bg-surface-elevated: #241e17;
+            --bg-void: #0b0a08;
+            --bg-card: #12100e;
+            --bg-surface: #181613;
+            --bg-surface-elevated: #201d19;
+            --bg-input: #151310;
 
-            /* Florentine Gold Leaf Palette */
-            --gold-foil: #d4a056;
-            --gold-light: #f5e4c3;
-            --gold-pale: #fcf9f2;
-            --gold-dark: #8c6022;
-            --gold-gradient: linear-gradient(135deg, #f7e6c4 0%, #d4a056 45%, #b58138 85%, #8f5f1e 100%);
-            --gold-gradient-shine: linear-gradient(135deg, #ffffff 0%, #f7e6c4 30%, #d4a056 70%, #9e6d27 100%);
-            --gold-glow: rgba(212, 160, 86, 0.35);
-            --gold-dim: rgba(212, 160, 86, 0.12);
-            --gold-subtle: rgba(212, 160, 86, 0.05);
+            --border-hairline: rgba(214, 180, 126, 0.1);
+            --border-subtle: rgba(214, 180, 126, 0.18);
+            --border-hover: rgba(214, 180, 126, 0.35);
 
-            /* Borders & Hairlines */
-            --border-gold: rgba(212, 160, 86, 0.26);
-            --border-gold-subtle: rgba(212, 160, 86, 0.13);
-            --border-dark: #241e18;
-            --border-light: #383025;
+            --text-primary: #ede5d8;
+            --text-secondary: #9c9182;
+            --text-muted: #665d50;
 
-            /* Manuscript Typography Colors */
-            --text-divine: #f5ede1;
-            --text-secondary: #b6a996;
-            --text-muted: #695e4e;
+            --accent-gold: #c69b56;
+            --accent-gold-hover: #deb36e;
+            --accent-gold-dim: rgba(198, 155, 86, 0.12);
+            --accent-terracotta: #a84742;
+            --accent-terracotta-hover: #bd534e;
 
-            /* Dante's Florentine Robe Crimson */
-            --accent-crimson: #a83434;
-            --accent-crimson-dim: rgba(168, 52, 52, 0.2);
-            --accent-crimson-glow: rgba(168, 52, 52, 0.4);
-
-            /* Typography */
-            --font-serif: 'Cormorant Garamond', Garamond, 'Georgia', serif;
-            --font-title: 'Cinzel', 'Trajan Pro', 'Palatino Linotype', serif;
+            --font-serif: 'Cormorant Garamond', Georgia, serif;
+            --font-title: 'Cinzel', serif;
+            --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             --font-mono: 'JetBrains Mono', monospace;
         }
 
@@ -74,136 +58,70 @@
         body {
             height: 100%;
             overflow: hidden;
-        }
-
-        body {
-            font-family: var(--font-serif);
             background: var(--bg-void);
-            color: var(--text-divine);
+            color: var(--text-primary);
+            font-family: var(--font-serif);
             -webkit-font-smoothing: antialiased;
             -moz-osx-font-smoothing: grayscale;
         }
 
         /* ================================================================
-           LAYOUT & AMBIENT CHIAROSCURO FRAME
+           MAIN FRAME
            ================================================================ */
         .app {
             height: 100%;
             display: flex;
             flex-direction: column;
             position: relative;
+            background: var(--bg-card);
         }
 
-        /* Desktop: Illuminated Manuscript Frame */
-        @media (min-width: 768px) {
+        @media (min-width: 860px) {
             body {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                padding: 30px 24px;
-                background:
-                    radial-gradient(ellipse 85% 65% at 50% 8%, rgba(212, 160, 86, 0.08) 0%, transparent 70%),
-                    radial-gradient(circle 600px at 90% 90%, rgba(138, 43, 30, 0.05) 0%, transparent 60%),
-                    radial-gradient(circle 500px at 10% 90%, rgba(20, 30, 50, 0.06) 0%, transparent 60%),
-                    var(--bg-void);
+                padding: 24px;
+                background: #090807;
             }
 
             .app {
-                max-width: 860px;
+                max-width: 840px;
                 width: 100%;
-                height: auto;
-                max-height: calc(100vh - 60px);
-                background: var(--bg-card);
-                border: 1px solid var(--border-gold);
-                border-radius: 8px;
-                box-shadow:
-                    0 0 0 1px rgba(255, 255, 255, 0.03),
-                    0 25px 85px -12px rgba(0, 0, 0, 0.95),
-                    0 0 60px -15px rgba(212, 160, 86, 0.12);
-                overflow: hidden;
-            }
-        }
-
-        /* Symmetrical Illuminated Corner Brackets */
-        .app-corner {
-            position: absolute;
-            width: 14px;
-            height: 14px;
-            pointer-events: none;
-            z-index: 30;
-            display: none;
-        }
-
-        @media (min-width: 768px) {
-            .app-corner {
-                display: block;
-            }
-            .corner-tl {
-                top: 6px;
-                left: 6px;
-                border-top: 2px solid var(--gold-foil);
-                border-left: 2px solid var(--gold-foil);
-            }
-            .corner-tr {
-                top: 6px;
-                right: 6px;
-                border-top: 2px solid var(--gold-foil);
-                border-right: 2px solid var(--gold-foil);
-            }
-            .corner-bl {
-                bottom: 6px;
-                left: 6px;
-                border-bottom: 2px solid var(--gold-foil);
-                border-left: 2px solid var(--gold-foil);
-            }
-            .corner-br {
-                bottom: 6px;
-                right: 6px;
-                border-bottom: 2px solid var(--gold-foil);
-                border-right: 2px solid var(--gold-foil);
+                height: calc(100vh - 48px);
+                max-height: 940px;
+                border: 1px solid var(--border-subtle);
+                border-radius: 6px;
+                box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.7);
             }
         }
 
         /* ================================================================
-           HEADER & FLORENTINE CREST
+           HEADER
            ================================================================ */
         .header {
-            position: relative;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 16px 24px;
-            border-bottom: 1px solid var(--border-gold-subtle);
+            padding: 18px 28px;
+            border-bottom: 1px solid var(--border-hairline);
+            background: var(--bg-surface);
             flex-shrink: 0;
-            background: linear-gradient(180deg, rgba(26, 22, 17, 0.98) 0%, rgba(19, 16, 13, 0.98) 100%);
             z-index: 10;
         }
 
         .header-left {
             display: flex;
             align-items: center;
-            gap: 14px;
+            gap: 12px;
         }
 
         .brand-crest {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 34px;
-            height: 34px;
-            border-radius: 50%;
-            background: radial-gradient(circle, rgba(212, 160, 86, 0.22) 0%, rgba(20, 16, 12, 0.8) 85%);
-            border: 1px solid var(--border-gold);
-            box-shadow: 0 0 12px rgba(212, 160, 86, 0.18);
-            flex-shrink: 0;
-        }
-
-        .crest-symbol {
-            font-size: 1.15rem;
-            color: var(--gold-foil);
-            text-shadow: 0 0 8px var(--gold-glow);
+            font-size: 1.1rem;
+            color: var(--accent-gold);
             user-select: none;
             line-height: 1;
+            opacity: 0.85;
         }
 
         .brand-text {
@@ -212,38 +130,14 @@
             gap: 2px;
         }
 
-        .brand-title-row {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            flex-wrap: nowrap;
-        }
-
         .title {
             font-family: var(--font-title);
-            font-size: 1.15rem;
-            font-weight: 700;
-            letter-spacing: 0.14em;
-            background: var(--gold-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            font-size: 1.05rem;
+            font-weight: 600;
+            letter-spacing: 0.16em;
             text-transform: uppercase;
-            filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.7));
-            margin: 0;
-            line-height: 1.1;
-            white-space: nowrap;
-        }
-
-        .laurel-badge {
-            font-family: var(--font-mono);
-            font-size: 0.58rem;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--gold-foil);
-            background: var(--gold-dim);
-            border: 1px solid var(--border-gold-subtle);
-            padding: 1px 6px;
-            border-radius: 3px;
+            color: var(--text-primary);
+            line-height: 1.2;
         }
 
         .subtitle {
@@ -251,7 +145,7 @@
             font-size: 0.82rem;
             font-style: italic;
             color: var(--text-secondary);
-            letter-spacing: 0.04em;
+            letter-spacing: 0.03em;
         }
 
         .header-right {
@@ -263,44 +157,40 @@
         .header-links {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
         .header-link {
-            font-family: var(--font-mono);
-            font-size: 0.62rem;
-            letter-spacing: 0.08em;
-            color: var(--text-muted);
+            font-family: var(--font-sans);
+            font-size: 0.7rem;
+            color: var(--text-secondary);
             text-decoration: none;
-            transition: all 0.2s ease;
-            text-transform: uppercase;
+            letter-spacing: 0.04em;
+            transition: color 0.2s ease;
         }
 
         .header-link:hover {
-            color: var(--gold-light);
-            text-shadow: 0 0 8px var(--gold-glow);
+            color: var(--text-primary);
         }
 
         .header-sep {
-            font-size: 0.45rem;
-            color: var(--border-light);
+            font-size: 0.65rem;
+            color: var(--border-subtle);
             user-select: none;
         }
 
         .status {
-            font-family: var(--font-mono);
-            font-size: 0.62rem;
-            letter-spacing: 0.08em;
+            font-family: var(--font-sans);
+            font-size: 0.68rem;
+            letter-spacing: 0.03em;
             color: var(--text-secondary);
             display: flex;
             align-items: center;
-            gap: 8px;
-            padding: 5px 12px;
-            background: rgba(14, 12, 10, 0.8);
-            border: 1px solid var(--border-gold-subtle);
-            border-radius: 20px;
-            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.5);
-            backdrop-filter: blur(8px);
+            gap: 7px;
+            padding: 4px 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-hairline);
+            border-radius: 4px;
         }
 
         .status-dot {
@@ -308,26 +198,25 @@
             height: 6px;
             border-radius: 50%;
             background: var(--text-muted);
-            transition: all 0.3s;
+            transition: all 0.3s ease;
         }
 
         .status.active .status-dot {
-            background: var(--gold-foil);
-            box-shadow: 0 0 10px var(--gold-glow), 0 0 3px #ffffff;
+            background: var(--accent-gold);
         }
 
         .status.loading .status-dot {
-            background: var(--gold-light);
-            animation: pulse 1s ease-in-out infinite;
+            background: var(--text-secondary);
+            animation: statusPulse 1.2s ease-in-out infinite;
         }
 
-        @keyframes pulse {
+        @keyframes statusPulse {
             0%, 100% { opacity: 1; transform: scale(1); }
             50% { opacity: 0.3; transform: scale(0.85); }
         }
 
         /* ================================================================
-           MAIN TEXT AREA & ILLUMINATED TERZINE
+           POETRY READING AREA
            ================================================================ */
         .main {
             flex: 1;
@@ -335,7 +224,7 @@
             display: flex;
             flex-direction: column;
             min-height: 0;
-            background: radial-gradient(ellipse at 50% 25%, rgba(212, 160, 86, 0.035) 0%, rgba(14, 12, 10, 0.98) 75%), var(--bg-void);
+            background: var(--bg-card);
             position: relative;
         }
 
@@ -343,31 +232,26 @@
             flex: 1;
             overflow-y: auto;
             overflow-x: hidden;
-            padding: 36px 32px;
+            padding: 44px 36px;
             scrollbar-width: thin;
-            scrollbar-color: var(--border-gold-subtle) transparent;
+            scrollbar-color: var(--border-subtle) transparent;
         }
 
         .text-scroll::-webkit-scrollbar {
-            width: 6px;
+            width: 5px;
         }
 
         .text-scroll::-webkit-scrollbar-thumb {
-            background: var(--border-gold-subtle);
+            background: var(--border-subtle);
             border-radius: 3px;
         }
 
-        .text-scroll::-webkit-scrollbar-thumb:hover {
-            background: var(--gold-dark);
-        }
-
         .text-content {
-            max-width: 620px;
+            max-width: 640px;
             margin: 0 auto;
-            font-size: 1.35rem;
-            line-height: 2.05;
-            font-weight: 400;
-            color: var(--text-divine);
+            font-size: 1.32rem;
+            line-height: 2.1;
+            color: var(--text-primary);
             position: relative;
         }
 
@@ -377,232 +261,196 @@
             outline: none;
         }
 
-        /* Empty state atmospheric watermark */
         #text-output:empty::before {
-            content: "« Nel mezzo del cammin di nostra vita... »\A\APremi « AVVIA » per evocare la terzina dantesca o inserisci un verso tuo.";
+            content: "« Nel mezzo del cammin di nostra vita... »\A\APremi « Avvia » per iniziare la generazione.";
             white-space: pre-wrap;
             color: var(--text-muted);
             font-style: italic;
-            opacity: 0.55;
+            opacity: 0.45;
             display: block;
             text-align: center;
-            margin-top: 14vh;
-            font-size: 1.15rem;
-            line-height: 1.8;
+            margin-top: 18vh;
+            font-size: 1.18rem;
+            line-height: 1.9;
             letter-spacing: 0.02em;
         }
 
         #text-output.editable {
-            background: var(--gold-dim);
+            background: var(--accent-gold-dim);
             padding: 2px 6px;
-            margin: 0;
-            border-left: 2px solid var(--gold-foil);
-            box-decoration-break: clone;
-            -webkit-box-decoration-break: clone;
+            border-left: 2px solid var(--accent-gold);
         }
 
-        /* Renaissance Cursor */
         #cursor {
             display: inline-block;
-            width: 2px;
+            width: 1.5px;
             height: 1.15em;
-            background: var(--gold-foil);
+            background: var(--accent-gold);
             margin-left: 2px;
             vertical-align: text-bottom;
-            box-shadow: 0 0 8px var(--gold-glow);
-            animation: blink 1s ease-in-out infinite;
+            animation: cursorBlink 1s step-start infinite;
         }
 
-        @keyframes blink {
-            0%, 45% { opacity: 1; }
-            50%, 95% { opacity: 0; }
-            100% { opacity: 1; }
+        @keyframes cursorBlink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
         }
 
-        /* Tercet block with Illuminated Drop Cap */
+        /* Terzina formatting */
         .terzina-block {
-            margin-bottom: 2em;
+            margin-bottom: 2rem;
             position: relative;
-            padding-left: 4px;
-            animation: verseAppear 0.3s ease-out;
-        }
-
-        @keyframes verseAppear {
-            from {
-                opacity: 0;
-                transform: translateY(4px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .terzina-block:first-letter {
-            font-family: var(--font-title);
-            font-size: 2.7em;
-            font-weight: 700;
-            float: left;
-            line-height: 0.82;
-            margin-right: 12px;
-            margin-top: 4px;
-            background: var(--gold-gradient);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            filter: drop-shadow(0 2px 5px rgba(0, 0, 0, 0.7));
         }
 
         .verse-line {
             display: flex;
             align-items: baseline;
             gap: 12px;
-            line-height: 2.0;
+            line-height: 2.05;
         }
 
         .verse-text {
             flex: 1;
-            font-family: var(--font-serif);
-            color: var(--text-divine);
+            color: var(--text-primary);
         }
 
         .rhyme-badge {
             font-family: var(--font-mono);
-            font-size: 0.62rem;
-            font-weight: 600;
-            padding: 2px 7px;
-            border-radius: 4px;
-            background: var(--gold-dim);
-            color: var(--gold-foil);
-            border: 1px solid var(--border-gold);
+            font-size: 0.65rem;
+            font-weight: 500;
+            padding: 1px 6px;
+            border-radius: 3px;
+            background: var(--accent-gold-dim);
+            color: var(--accent-gold);
+            border: 1px solid var(--border-subtle);
             user-select: none;
             flex-shrink: 0;
-            letter-spacing: 0.05em;
-            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+            letter-spacing: 0.04em;
         }
 
         .syllable-badge {
             font-family: var(--font-mono);
-            font-size: 0.6rem;
-            color: var(--text-secondary);
-            background: rgba(255, 255, 255, 0.035);
-            padding: 2px 6px;
-            border-radius: 4px;
+            font-size: 0.62rem;
+            color: var(--text-muted);
+            padding: 1px 5px;
+            border-radius: 3px;
             user-select: none;
             flex-shrink: 0;
-            border: 1px solid rgba(255, 255, 255, 0.06);
         }
 
         /* Canto Separator */
         .canto-separator {
             text-align: center;
-            margin: 44px 0;
+            margin: 3.5rem 0;
             font-family: var(--font-title);
-            color: var(--gold-foil);
-            font-size: 0.82rem;
-            font-weight: 600;
-            letter-spacing: 0.28em;
+            color: var(--accent-gold);
+            font-size: 0.8rem;
+            letter-spacing: 0.35em;
             user-select: none;
-            opacity: 0.85;
+            opacity: 0.75;
         }
 
-        .canto-separator::before,
-        .canto-separator::after {
-            content: '✦ · · · ✦';
-            margin: 0 18px;
-            font-size: 0.65rem;
-            color: var(--border-gold);
-            letter-spacing: 0.15em;
-        }
-
-        /* Edit Indicator */
+        /* Edit Indicator (Hidden for clean editorial reading) */
         .edit-indicator {
-            position: fixed;
-            top: 80px;
-            left: 50%;
-            transform: translateX(-50%) translateY(-10px);
-            padding: 8px 18px;
-            background: var(--gold-gradient);
-            color: #120e09;
-            font-family: var(--font-mono);
-            font-size: 0.68rem;
-            font-weight: 600;
-            letter-spacing: 0.12em;
-            border-radius: 20px;
-            box-shadow: 0 4px 16px var(--gold-glow);
-            opacity: 0;
-            visibility: hidden;
-            transition: all 0.2s ease;
-            z-index: 100;
-            text-transform: uppercase;
+            display: none !important;
         }
 
-        .edit-indicator.visible {
-            opacity: 1;
-            visibility: visible;
-            transform: translateX(-50%) translateY(0);
-        }
-
-        /* Context window inline highlighting */
         .context-highlight {
-            background: rgba(212, 160, 86, 0.2);
+            background: rgba(198, 155, 86, 0.15);
             border-radius: 2px;
         }
 
         /* ================================================================
-           CONTROLS & PARAMETERS DRAWER
+           CONTROLS & PARAMETERS
            ================================================================ */
         .controls {
-            position: relative;
             flex-shrink: 0;
-            background: linear-gradient(180deg, rgba(18, 15, 12, 0.98) 0%, rgba(12, 10, 8, 1) 100%);
-            border-top: 1px solid var(--border-gold-subtle);
-            padding: 16px 24px;
+            background: var(--bg-surface);
+            border-top: 1px solid var(--border-hairline);
+            padding: 16px 28px;
             padding-bottom: max(16px, env(safe-area-inset-bottom));
         }
 
-        .params-toggle {
+        .actions {
             display: flex;
+            align-items: center;
             justify-content: center;
-            margin-bottom: 12px;
+            gap: 10px;
         }
 
-        .params-toggle-btn {
-            background: rgba(212, 160, 86, 0.04);
-            border: 1px solid var(--border-gold-subtle);
-            color: var(--text-dim);
-            font-family: var(--font-title), var(--font-mono);
-            font-size: 0.62rem;
-            letter-spacing: 0.12em;
-            padding: 6px 16px;
-            border-radius: 20px;
+        .btn {
+            padding: 9px 20px;
+            font-family: var(--font-sans);
+            font-size: 0.78rem;
+            font-weight: 500;
+            letter-spacing: 0.03em;
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            border: 1px solid var(--border-subtle);
+            border-radius: 5px;
             cursor: pointer;
-            transition: all 0.2s ease;
-            text-transform: uppercase;
+            transition: all 0.18s ease;
+            text-align: center;
         }
 
-        .params-toggle-btn:hover {
-            border-color: var(--gold-foil);
-            color: var(--gold-light);
-            background: rgba(212, 160, 86, 0.08);
+        .btn:hover:not(:disabled) {
+            color: var(--text-primary);
+            border-color: var(--border-hover);
+            background: var(--bg-surface-elevated);
         }
 
-        .params-toggle-btn.active {
-            border-color: var(--gold-foil);
-            color: var(--gold-light);
-            background: var(--gold-dim);
-            box-shadow: 0 0 10px rgba(212, 160, 86, 0.2);
+        .btn:active:not(:disabled) {
+            transform: translateY(1px);
         }
 
+        .btn:disabled {
+            opacity: 0.35;
+            cursor: not-allowed;
+        }
+
+        /* Primary Toggle Button (Avvia / Pausa) */
+        .btn-primary {
+            background: var(--accent-gold);
+            color: #0d0c0a;
+            border-color: var(--accent-gold);
+            font-weight: 600;
+            min-width: 105px;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: var(--accent-gold-hover);
+            color: #0d0c0a;
+            border-color: var(--accent-gold-hover);
+        }
+
+        .btn-primary.generating {
+            background: var(--accent-terracotta);
+            border-color: var(--accent-terracotta);
+            color: #ffffff;
+        }
+
+        .btn-primary.generating:hover:not(:disabled) {
+            background: var(--accent-terracotta-hover);
+            border-color: var(--accent-terracotta-hover);
+            color: #ffffff;
+        }
+
+        .btn.active {
+            background: var(--accent-gold-dim);
+            border-color: var(--accent-gold);
+            color: var(--accent-gold);
+        }
+
+        /* Parameters Drawer */
         .params-grid {
             display: none;
             grid-template-columns: repeat(3, 1fr);
             gap: 14px;
-            margin-bottom: 14px;
+            margin-top: 14px;
             padding: 16px;
-            background: linear-gradient(180deg, rgba(24, 20, 16, 0.9) 0%, rgba(16, 13, 10, 0.95) 100%);
-            border-radius: 8px;
-            border: 1px solid var(--border-gold-subtle);
-            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.5);
+            background: var(--bg-card);
+            border-radius: 6px;
+            border: 1px solid var(--border-hairline);
         }
 
         .params-grid.visible {
@@ -618,16 +466,14 @@
         .param-header {
             display: flex;
             justify-content: space-between;
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
-            letter-spacing: 0.08em;
+            font-family: var(--font-sans);
+            font-size: 0.65rem;
             color: var(--text-secondary);
-            text-transform: uppercase;
         }
 
         .param-value {
-            color: var(--gold-foil);
-            font-weight: 500;
+            font-family: var(--font-mono);
+            color: var(--accent-gold);
         }
 
         input[type="range"] {
@@ -635,7 +481,7 @@
             appearance: none;
             width: 100%;
             height: 3px;
-            background: var(--border-dark);
+            background: var(--bg-surface-elevated);
             border-radius: 2px;
             cursor: pointer;
             outline: none;
@@ -644,26 +490,23 @@
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 14px;
-            height: 14px;
-            background: var(--gold-gradient);
-            border: 1px solid var(--gold-light);
+            width: 12px;
+            height: 12px;
+            background: var(--accent-gold);
             border-radius: 50%;
             cursor: pointer;
-            transition: transform 0.15s, box-shadow 0.15s;
-            box-shadow: 0 0 6px rgba(0, 0, 0, 0.5);
+            transition: transform 0.15s ease;
         }
 
         input[type="range"]::-webkit-slider-thumb:hover {
-            transform: scale(1.2);
-            box-shadow: 0 0 10px var(--gold-glow);
+            transform: scale(1.25);
         }
 
         input[type="range"]::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            background: var(--gold-foil);
-            border: 1px solid var(--gold-light);
+            width: 12px;
+            height: 12px;
+            background: var(--accent-gold);
+            border: none;
             border-radius: 50%;
             cursor: pointer;
         }
@@ -677,47 +520,44 @@
         .context-toggle-header {
             display: flex;
             justify-content: space-between;
-            font-family: var(--font-mono);
-            font-size: 0.6rem;
-            letter-spacing: 0.08em;
+            font-family: var(--font-sans);
+            font-size: 0.65rem;
             color: var(--text-secondary);
-            text-transform: uppercase;
         }
 
         .context-toggle-btn {
-            background: rgba(255, 255, 255, 0.02);
-            border: 1px solid var(--border-gold-subtle);
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
             color: var(--text-secondary);
-            font-family: var(--font-mono);
-            font-size: 0.58rem;
-            letter-spacing: 0.08em;
+            font-family: var(--font-sans);
+            font-size: 0.68rem;
             padding: 6px 10px;
             border-radius: 4px;
             cursor: pointer;
-            transition: all 0.2s;
+            transition: all 0.18s ease;
             width: 100%;
         }
 
-        .context-toggle-btn:hover {
-            border-color: var(--gold-foil);
-            color: var(--gold-light);
+        .context-toggle-btn:hover:not(:disabled) {
+            border-color: var(--accent-gold);
+            color: var(--text-primary);
         }
 
         .context-toggle-btn.active {
-            border-color: var(--gold-foil);
-            color: var(--gold-light);
-            background: var(--gold-dim);
+            border-color: var(--accent-gold);
+            color: var(--accent-gold);
+            background: var(--accent-gold-dim);
         }
 
         .context-window-display {
             position: fixed;
-            top: 80px;
+            top: 74px;
             right: 20px;
             width: 290px;
             max-height: 320px;
             background: var(--bg-surface);
-            border: 1px solid var(--border-gold);
-            border-radius: 8px;
+            border: 1px solid var(--border-subtle);
+            border-radius: 6px;
             padding: 14px;
             font-family: var(--font-mono);
             font-size: 0.62rem;
@@ -728,7 +568,7 @@
             transition: all 0.2s ease;
             z-index: 100;
             word-break: break-all;
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
         }
 
         .context-window-display.visible {
@@ -741,347 +581,26 @@
             justify-content: space-between;
             margin-bottom: 8px;
             padding-bottom: 6px;
-            border-bottom: 1px solid var(--border-gold-subtle);
-            color: var(--gold-foil);
+            border-bottom: 1px solid var(--border-hairline);
+            color: var(--accent-gold);
             font-size: 0.65rem;
-            letter-spacing: 0.08em;
         }
 
         .context-window-display .ctx-content {
             line-height: 1.5;
-            color: var(--text-divine);
-            opacity: 0.8;
+            color: var(--text-primary);
+            opacity: 0.85;
         }
 
         .context-window-display .ctx-content .ctx-new {
-            background: var(--gold-dim);
-            color: var(--gold-foil);
+            background: var(--accent-gold-dim);
+            color: var(--accent-gold);
             border-radius: 2px;
             padding: 0 2px;
         }
 
         /* ================================================================
-           INCIPIT INPUT BAR
-           ================================================================ */
-        .incipit-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            margin-bottom: 14px;
-            background: linear-gradient(90deg, rgba(212, 160, 86, 0.07) 0%, rgba(20, 18, 15, 0.7) 100%);
-            border: 1px solid var(--border-gold);
-            border-radius: 6px;
-            padding: 7px 14px;
-            box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4);
-            transition: all 0.25s ease;
-        }
-
-        .incipit-container:focus-within {
-            border-color: var(--gold-foil);
-            box-shadow:
-                inset 0 2px 6px rgba(0, 0, 0, 0.5),
-                0 0 16px rgba(212, 160, 86, 0.2);
-            background: linear-gradient(90deg, rgba(212, 160, 86, 0.11) 0%, rgba(26, 23, 19, 0.9) 100%);
-        }
-
-        .incipit-icon {
-            font-size: 1.15rem;
-            color: var(--gold-foil);
-            user-select: none;
-            filter: drop-shadow(0 0 4px var(--gold-glow));
-            line-height: 1;
-        }
-
-        .incipit-input {
-            flex: 1;
-            background: transparent;
-            border: none;
-            outline: none;
-            font-family: var(--font-serif);
-            font-size: 1.15rem;
-            color: var(--text-divine);
-            font-style: italic;
-        }
-
-        .incipit-input::placeholder {
-            color: var(--text-muted);
-            font-style: italic;
-            font-size: 0.98rem;
-        }
-
-        .btn-incipit {
-            padding: 7px 14px;
-            font-family: var(--font-title);
-            font-size: 0.65rem;
-            font-weight: 600;
-            letter-spacing: 0.1em;
-            flex: 0 0 auto;
-            background: rgba(212, 160, 86, 0.12);
-            border: 1px solid var(--border-gold);
-            color: var(--gold-light);
-            border-radius: 4px;
-            cursor: pointer;
-            text-transform: uppercase;
-            transition: all 0.2s ease;
-        }
-
-        .btn-incipit:hover {
-            background: var(--gold-gradient);
-            color: #120e09;
-            border-color: var(--gold-foil);
-            box-shadow: 0 0 12px var(--gold-glow);
-            transform: translateY(-1px);
-        }
-
-        /* ================================================================
-           ACTION BUTTONS (HIERARCHICAL GRID)
-           ================================================================ */
-        .actions {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .btn {
-            flex: 1 1 calc(25% - 8px);
-            min-width: 80px;
-            padding: 11px 12px;
-            font-family: var(--font-title), var(--font-mono);
-            font-size: 0.68rem;
-            font-weight: 600;
-            letter-spacing: 0.09em;
-            text-transform: uppercase;
-            background: rgba(255, 255, 255, 0.02);
-            color: var(--text-divine);
-            border: 1px solid var(--border-gold-subtle);
-            border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-            -webkit-tap-highlight-color: transparent;
-            text-align: center;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
-        }
-
-        .btn:hover:not(:disabled) {
-            border-color: var(--gold-foil);
-            color: var(--gold-light);
-            background: rgba(212, 160, 86, 0.06);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 8px rgba(212, 160, 86, 0.15);
-            transform: translateY(-1px);
-        }
-
-        .btn:active:not(:disabled) {
-            transform: translateY(1px) scale(0.98);
-        }
-
-        .btn:disabled {
-            opacity: 0.3;
-            cursor: not-allowed;
-            border-color: var(--border-dark);
-        }
-
-        /* Primary Start Button with Florentine Gold Foil */
-        .btn-primary {
-            background: var(--gold-gradient) !important;
-            color: #120e09 !important;
-            border-color: var(--gold-foil) !important;
-            font-weight: 700;
-            box-shadow: 0 3px 14px rgba(212, 160, 86, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
-        }
-
-        .btn-primary:hover:not(:disabled) {
-            background: var(--gold-gradient-shine) !important;
-            box-shadow: 0 5px 20px rgba(212, 160, 86, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.4) !important;
-            transform: translateY(-2px);
-        }
-
-        /* Stop Button with subtle Florentine crimson accent */
-        #stop-btn:hover:not(:disabled) {
-            border-color: var(--accent-crimson) !important;
-            color: #ff9e9e !important;
-            background: var(--accent-crimson-dim) !important;
-            box-shadow: 0 0 12px var(--accent-crimson-glow) !important;
-        }
-
-        /* Active Toggle Buttons */
-        .btn.active {
-            background: var(--gold-dim);
-            border-color: var(--gold-foil);
-            color: var(--gold-light);
-            box-shadow: 0 0 12px var(--gold-glow);
-        }
-
-        /* Speech Wave Pulse Animation */
-        @keyframes voicePulse {
-            0%, 100% {
-                box-shadow: 0 0 6px var(--gold-glow);
-                border-color: var(--gold-foil);
-            }
-            50% {
-                box-shadow: 0 0 18px var(--gold-glow), 0 0 6px #ffffff;
-                border-color: var(--gold-light);
-            }
-        }
-
-        .btn-speaking {
-            animation: voicePulse 1.2s infinite ease-in-out;
-            background: var(--gold-dim) !important;
-            color: var(--gold-light) !important;
-            border-color: var(--gold-foil) !important;
-        }
-
-        /* Footer credits */
-        .footer-credits {
-            display: none;
-            justify-content: center;
-            align-items: center;
-            gap: 16px;
-            margin-top: 12px;
-            padding-top: 12px;
-            border-top: 1px solid var(--border-gold-subtle);
-        }
-
-        .footer-link {
-            font-family: var(--font-mono);
-            font-size: 0.58rem;
-            letter-spacing: 0.08em;
-            color: var(--text-muted);
-            text-decoration: none;
-            transition: color 0.2s;
-            text-transform: uppercase;
-        }
-
-        .footer-link:hover {
-            color: var(--gold-foil);
-        }
-
-        /* ================================================================
-           RESPONSIVE REFINEMENTS
-           ================================================================ */
-        @media (min-width: 768px) {
-            .header {
-                padding: 18px 28px;
-            }
-
-            .title {
-                font-size: 1.25rem;
-            }
-
-            .text-scroll {
-                padding: 40px 36px;
-            }
-
-            .text-content {
-                font-size: 1.4rem;
-            }
-
-            .controls {
-                padding: 18px 28px;
-            }
-
-            .footer-credits {
-                display: flex;
-            }
-        }
-
-        @media (min-width: 1024px) {
-            .text-content {
-                font-size: 1.42rem;
-                line-height: 2.1;
-            }
-        }
-
-        @media (max-width: 767px) {
-            .header-links {
-                display: none;
-            }
-
-            .header {
-                padding: 12px 16px;
-            }
-
-            .brand-crest {
-                width: 28px;
-                height: 28px;
-            }
-
-            .crest-symbol {
-                font-size: 0.95rem;
-            }
-
-            .title {
-                font-size: 0.98rem;
-            }
-
-            .subtitle {
-                display: none;
-            }
-
-            .text-scroll {
-                padding: 20px 16px;
-            }
-
-            .text-content {
-                font-size: 1.1rem;
-                line-height: 1.85;
-            }
-
-            .controls {
-                padding: 12px 16px;
-            }
-
-            .params-grid {
-                grid-template-columns: repeat(2, 1fr);
-                gap: 12px;
-                padding: 12px;
-            }
-
-            .context-toggle {
-                grid-column: span 2;
-            }
-
-            .context-window-display {
-                top: auto;
-                bottom: 180px;
-                right: 10px;
-                left: 10px;
-                width: auto;
-            }
-
-            .btn {
-                padding: 12px 8px;
-                font-size: 0.62rem;
-                flex: 1 1 calc(50% - 6px);
-            }
-
-            .canto-separator {
-                font-size: 0.75rem;
-                margin: 28px 0;
-            }
-
-            .footer-credits {
-                display: flex;
-            }
-        }
-
-        /* Touch devices */
-        @media (hover: none) and (pointer: coarse) {
-            input[type="range"]::-webkit-slider-thumb {
-                width: 20px;
-                height: 20px;
-            }
-
-            .btn {
-                min-height: 44px;
-            }
-
-            .params-toggle-btn {
-                padding: 8px 18px;
-            }
-        }
-
-        /* ================================================================
-           BENCHMARK MODAL (GLASSMORPHIC & FLORENTINE)
+           BENCHMARK MODAL
            ================================================================ */
         .benchmark-modal {
             position: fixed;
@@ -1089,15 +608,15 @@
             left: 0;
             right: 0;
             bottom: 0;
-            background: rgba(0, 0, 0, 0.88);
-            backdrop-filter: blur(10px);
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(6px);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 1000;
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s ease;
+            transition: all 0.25s ease;
         }
 
         .benchmark-modal.visible {
@@ -1106,194 +625,227 @@
         }
 
         .benchmark-modal-content {
-            background: linear-gradient(160deg, #1d1813 0%, #0e0c09 100%);
-            border: 1px solid var(--border-gold);
-            border-radius: 12px;
-            max-width: 520px;
+            background: var(--bg-surface);
+            border: 1px solid var(--border-subtle);
+            border-radius: 8px;
+            max-width: 480px;
             width: 90%;
             max-height: 80vh;
             overflow: hidden;
-            box-shadow:
-                0 0 0 1px rgba(255, 255, 255, 0.04),
-                0 30px 90px rgba(0, 0, 0, 0.9),
-                0 0 80px rgba(212, 160, 86, 0.15);
-            transform: scale(0.95) translateY(20px);
-            transition: transform 0.3s ease;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+            transform: scale(0.97);
+            transition: transform 0.25s ease;
         }
 
         .benchmark-modal.visible .benchmark-modal-content {
-            transform: scale(1) translateY(0);
+            transform: scale(1);
         }
 
         .benchmark-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 18px 24px;
-            border-bottom: 1px solid var(--border-gold-subtle);
-            background: rgba(212, 160, 86, 0.06);
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border-hairline);
         }
 
         .benchmark-header h2 {
             font-family: var(--font-title);
-            font-size: 0.95rem;
-            font-weight: 700;
-            letter-spacing: 0.15em;
-            color: var(--gold-foil);
+            font-size: 0.88rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            color: var(--accent-gold);
+            text-transform: uppercase;
             margin: 0;
         }
 
         .benchmark-close {
             background: none;
             border: none;
-            color: var(--text-muted);
-            font-size: 1.2rem;
+            color: var(--text-secondary);
+            font-size: 1.1rem;
             cursor: pointer;
-            padding: 4px 8px;
-            transition: color 0.2s;
+            padding: 4px;
+            transition: color 0.18s;
         }
 
         .benchmark-close:hover {
-            color: var(--gold-foil);
+            color: var(--text-primary);
         }
 
         .benchmark-body {
-            padding: 24px;
+            padding: 20px;
             max-height: 50vh;
             overflow-y: auto;
         }
 
         .benchmark-output {
             font-family: var(--font-serif);
-            font-size: 1.1rem;
+            font-size: 1.05rem;
             line-height: 1.9;
-            color: var(--text-divine);
+            color: var(--text-primary);
             white-space: pre-wrap;
-            padding: 16px;
-            background: var(--bg-void);
-            border-radius: 8px;
-            border: 1px solid var(--border-gold-subtle);
-            margin-bottom: 20px;
-            max-height: 200px;
+            padding: 14px;
+            background: var(--bg-card);
+            border-radius: 6px;
+            border: 1px solid var(--border-hairline);
+            margin-bottom: 16px;
+            max-height: 180px;
             overflow-y: auto;
         }
 
         .benchmark-stats {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 6px;
         }
 
         .stat-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 12px 16px;
-            background: rgba(255, 255, 255, 0.02);
-            border-radius: 6px;
-            border: 1px solid var(--border-gold-subtle);
+            padding: 10px 14px;
+            background: var(--bg-card);
+            border-radius: 5px;
+            border: 1px solid var(--border-hairline);
         }
 
         .stat-row.highlight {
-            background: var(--gold-dim);
-            border-color: var(--gold-foil);
+            background: var(--accent-gold-dim);
+            border-color: var(--accent-gold);
         }
 
         .stat-label {
-            font-family: var(--font-mono);
+            font-family: var(--font-sans);
             font-size: 0.68rem;
-            letter-spacing: 0.08em;
             color: var(--text-secondary);
-            text-transform: uppercase;
         }
 
         .stat-value {
             font-family: var(--font-mono);
-            font-size: 0.85rem;
-            font-weight: 500;
-            color: var(--text-divine);
+            font-size: 0.82rem;
+            color: var(--text-primary);
         }
 
         .stat-row.highlight .stat-value {
-            color: var(--gold-foil);
-            font-size: 1rem;
+            color: var(--accent-gold);
             font-weight: 600;
         }
 
         .benchmark-footer {
-            padding: 16px 24px;
-            border-top: 1px solid var(--border-gold-subtle);
+            padding: 14px 20px;
+            border-top: 1px solid var(--border-hairline);
             display: flex;
             justify-content: center;
-            background: rgba(14, 12, 10, 0.7);
         }
 
         .benchmark-progress {
             text-align: center;
-            padding: 40px;
+            padding: 30px 10px;
         }
 
         .benchmark-progress-text {
-            font-family: var(--font-mono);
+            font-family: var(--font-sans);
             font-size: 0.75rem;
-            letter-spacing: 0.1em;
-            color: var(--gold-foil);
+            color: var(--accent-gold);
             margin-bottom: 12px;
         }
 
         .benchmark-progress-bar {
             width: 100%;
-            height: 4px;
-            background: var(--border-dark);
+            height: 3px;
+            background: var(--bg-surface-elevated);
             border-radius: 2px;
             overflow: hidden;
         }
 
         .benchmark-progress-fill {
             height: 100%;
-            background: var(--gold-gradient);
+            background: var(--accent-gold);
             border-radius: 2px;
             transition: width 0.1s ease;
+        }
+
+        /* ================================================================
+           RESPONSIVE
+           ================================================================ */
+        @media (max-width: 767px) {
+            .header {
+                padding: 14px 18px;
+            }
+
+            .header-links {
+                display: none;
+            }
+
+            .subtitle {
+                display: none;
+            }
+
+            .text-scroll {
+                padding: 24px 18px;
+            }
+
+            .text-content {
+                font-size: 1.15rem;
+                line-height: 1.9;
+            }
+
+            .controls {
+                padding: 12px 16px;
+            }
+
+            .actions {
+                flex-wrap: wrap;
+            }
+
+            .btn {
+                flex: 1 1 calc(50% - 6px);
+                padding: 10px 12px;
+            }
+
+            .btn-primary {
+                flex: 1 1 100%;
+            }
+
+            .params-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+                padding: 12px;
+            }
+
+            .context-toggle {
+                grid-column: span 2;
+            }
         }
     </style>
 </head>
 
 <body>
     <div class="app">
-        <!-- Manuscript Corner Brackets -->
-        <div class="app-corner corner-tl"></div>
-        <div class="app-corner corner-tr"></div>
-        <div class="app-corner corner-bl"></div>
-        <div class="app-corner corner-br"></div>
-
         <!-- Header -->
         <header class="header">
             <div class="header-left">
-                <div class="brand-crest">
-                    <span class="crest-symbol">⚜</span>
-                </div>
+                <span class="brand-crest">⚜</span>
                 <div class="brand-text">
-                    <div class="brand-title-row">
-                        <h1 class="title">Infinite Dante</h1>
-                        <span class="laurel-badge">AI · Terza Rima</span>
-                    </div>
-                    <span class="subtitle">« Divina Commedia Perpetua · Rete Neurale & Terza Rima »</span>
+                    <h1 class="title">Infinite Dante</h1>
+                    <span class="subtitle">La Commedia in terza rima perpetua</span>
                 </div>
             </div>
             <div class="header-right">
                 <nav class="header-links">
                     <a href="https://github.com/Duccioo/InfiniteDante" target="_blank" class="header-link">GitHub</a>
-                    <span class="header-sep">✦</span>
+                    <span class="header-sep">/</span>
                     <a href="https://www.duccio.me" target="_blank" class="header-link">duccio.me</a>
                 </nav>
                 <div class="status" id="status-wrapper">
                     <span class="status-dot"></span>
-                    <span id="status">loading</span>
+                    <span id="status">caricamento</span>
                 </div>
             </div>
         </header>
 
-        <!-- Main text area -->
+        <!-- Main reading area -->
         <main class="main">
             <div class="text-scroll" id="text-container">
                 <div class="text-content">
@@ -1303,46 +855,46 @@
         </main>
 
         <!-- Edit indicator -->
-        <div class="edit-indicator" id="edit-indicator">✎ edit mode</div>
+        <div class="edit-indicator" id="edit-indicator">Modifica testo</div>
 
         <!-- Benchmark Modal -->
         <div class="benchmark-modal" id="benchmark-modal">
             <div class="benchmark-modal-content">
                 <div class="benchmark-header">
-                    <h2>⚡ BENCHMARK RESULTS</h2>
+                    <h2>Test Prestazioni</h2>
                     <button class="benchmark-close" id="benchmark-close">✕</button>
                 </div>
                 <div class="benchmark-body" id="benchmark-body">
                     <div class="benchmark-output" id="benchmark-output"></div>
                     <div class="benchmark-stats" id="benchmark-stats">
                         <div class="stat-row">
-                            <span class="stat-label">Total Time</span>
+                            <span class="stat-label">Tempo totale</span>
                             <span class="stat-value" id="stat-total-time">-</span>
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Tokens Generated</span>
+                            <span class="stat-label">Token generati</span>
                             <span class="stat-value" id="stat-tokens">-</span>
                         </div>
                         <div class="stat-row highlight">
-                            <span class="stat-label">Tokens/Second</span>
+                            <span class="stat-label">Token / secondo</span>
                             <span class="stat-value" id="stat-tps">-</span>
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Avg Time/Token</span>
+                            <span class="stat-label">Tempo medio per token</span>
                             <span class="stat-value" id="stat-avg-time">-</span>
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Context Window</span>
+                            <span class="stat-label">Finestra contesto</span>
                             <span class="stat-value" id="stat-ctx">256</span>
                         </div>
                         <div class="stat-row">
-                            <span class="stat-label">Verses Generated</span>
+                            <span class="stat-label">Versi generati</span>
                             <span class="stat-value" id="stat-verses">-</span>
                         </div>
                     </div>
                 </div>
                 <div class="benchmark-footer">
-                    <button class="btn btn-primary" id="benchmark-again">⚡ Run Again</button>
+                    <button class="btn btn-primary" id="benchmark-again">Ripeti Test</button>
                 </div>
             </div>
         </div>
@@ -1350,24 +902,25 @@
         <!-- Context window display -->
         <div class="context-window-display" id="context-window-display">
             <div class="ctx-header">
-                <span>CONTEXT WINDOW</span>
-                <span id="ctx-token-count">0 / 0 tokens</span>
+                <span>Finestra di Contesto</span>
+                <span id="ctx-token-count">0 / 0 token</span>
             </div>
-            <div class="ctx-content" id="ctx-content">
-                <!-- Context text will be displayed here -->
-            </div>
+            <div class="ctx-content" id="ctx-content"></div>
         </div>
 
         <!-- Controls -->
         <footer class="controls">
-            <div class="params-toggle">
-                <button class="params-toggle-btn" id="params-toggle">⚙ parametri & modello</button>
+            <div class="actions">
+                <button class="btn btn-primary" id="start-btn" disabled>Avvia</button>
+                <button class="btn" id="clear-btn">Pulisci</button>
+                <button class="btn" id="metric-toggle-btn">Metrica</button>
+                <button class="btn" id="params-toggle">Parametri</button>
             </div>
 
             <div class="params-grid" id="params-grid">
                 <div class="param">
                     <div class="param-header">
-                        <span>temp</span>
+                        <span>Creatività (temperatura)</span>
                         <span class="param-value" id="temp-value">0.85</span>
                     </div>
                     <input type="range" id="temperature" min="0.3" max="1.5" step="0.05" value="0.85">
@@ -1375,7 +928,7 @@
 
                 <div class="param">
                     <div class="param-header">
-                        <span>top-k</span>
+                        <span>Campionamento Top-K</span>
                         <span class="param-value" id="top-k-value">40</span>
                     </div>
                     <input type="range" id="top-k" min="10" max="100" step="5" value="40">
@@ -1383,7 +936,7 @@
 
                 <div class="param">
                     <div class="param-header">
-                        <span>top-p</span>
+                        <span>Campionamento Top-P</span>
                         <span class="param-value" id="top-p-value">0.92</span>
                     </div>
                     <input type="range" id="top-p" min="0.5" max="1.0" step="0.02" value="0.92">
@@ -1391,7 +944,7 @@
 
                 <div class="param">
                     <div class="param-header">
-                        <span>rep-pen</span>
+                        <span>Penalità ripetizione</span>
                         <span class="param-value" id="rep-penalty-value">1.15</span>
                     </div>
                     <input type="range" id="rep-penalty" min="1.0" max="2.0" step="0.05" value="1.15">
@@ -1399,7 +952,7 @@
 
                 <div class="param">
                     <div class="param-header">
-                        <span>speed</span>
+                        <span>Velocità emissione</span>
                         <span class="param-value" id="speed-value">50ms</span>
                     </div>
                     <input type="range" id="speed" min="10" max="200" step="10" value="50">
@@ -1407,7 +960,7 @@
 
                 <div class="param">
                     <div class="param-header">
-                        <span>ctx-size</span>
+                        <span>Dimensione contesto</span>
                         <span class="param-value" id="ctx-size-value">256</span>
                     </div>
                     <input type="range" id="ctx-size" min="64" max="512" step="32" value="256">
@@ -1415,63 +968,46 @@
 
                 <div class="context-toggle">
                     <div class="context-toggle-header">
-                        <span>context window</span>
+                        <span>Visualizzazione contesto</span>
                     </div>
-                    <button class="context-toggle-btn" id="context-toggle-btn">⬚ show context</button>
+                    <button class="context-toggle-btn" id="context-toggle-btn">Mostra contesto</button>
                 </div>
 
                 <div class="context-toggle">
                     <div class="context-toggle-header">
-                        <span>dante rhyme</span>
-                        <span class="param-value" id="rhyme-status">ON</span>
+                        <span>Modalità terza rima</span>
+                        <span class="param-value" id="rhyme-status">Forzata</span>
                     </div>
-                    <button class="context-toggle-btn active" id="rhyme-toggle-btn">🎭 terza rima (ABA BCB)</button>
+                    <button class="context-toggle-btn active" id="rhyme-toggle-btn">Terza rima: Forzata</button>
                 </div>
-            </div>
 
-            <!-- Incipit Input Bar -->
-            <div class="incipit-container" id="incipit-container">
-                <span class="incipit-icon" title="Componi un tuo incipit">🪶</span>
-                <input type="text" class="incipit-input" id="incipit-input" placeholder="Componi o incolla un tuo verso d'incipit (es: Nel mezzo del cammin di nostra vita)..." spellcheck="false">
-                <button class="btn-incipit" id="incipit-btn">✦ Inizia da qui</button>
-            </div>
-
-            <div class="actions">
-                <button class="btn btn-primary" id="start-btn" disabled>▶ avvia</button>
-                <button class="btn" id="stop-btn" disabled>■ ferma</button>
-                <button class="btn" id="clear-btn">✕ pulisci</button>
-                <button class="btn" id="speak-btn">🗣 recita</button>
-                <button class="btn" id="metric-toggle-btn">📐 metrica</button>
-                <button class="btn" id="copy-btn">📋 copia</button>
-                <button class="btn" id="export-btn">📜 esporta</button>
-                <button class="btn" id="benchmark-btn" disabled>⚡ benchmark</button>
-            </div>
-
-            <div class="footer-credits">
-                <a href="https://github.com/Duccioo/InfiniteDante" target="_blank" class="footer-link">GitHub</a>
-                <span class="footer-link" style="cursor: default;">·</span>
-                <a href="https://www.duccio.me" target="_blank" class="footer-link">duccio.me</a>
+                <div class="context-toggle">
+                    <div class="context-toggle-header">
+                        <span>Test velocità</span>
+                    </div>
+                    <button class="context-toggle-btn" id="benchmark-btn" disabled>Test prestazioni</button>
+                </div>
             </div>
         </footer>
     </div>
 
     <!-- Modular JavaScript -->
-    <script src="js/state.js"></script>
-    <script src="js/tokenizer.js"></script>
-    <script src="js/sampling.js"></script>
-    <script src="js/rhyme.js"></script>
-    <script src="js/inference.js"></script>
-    <script src="js/display.js"></script>
-    <script src="js/benchmark.js"></script>
-    <script src="js/main.js"></script>
+    <script src="js/state.js?v=6"></script>
+    <script src="js/tokenizer.js?v=6"></script>
+    <script src="js/sampling.js?v=6"></script>
+    <script src="js/rhyme.js?v=6"></script>
+    <script src="js/inference.js?v=6"></script>
+    <script src="js/display.js?v=6"></script>
+    <script src="js/benchmark.js?v=6"></script>
+    <script src="js/main.js?v=6"></script>
     <script>
         // Parameters panel toggle
         const paramsToggle = document.getElementById('params-toggle');
         const paramsGrid = document.getElementById('params-grid');
 
         paramsToggle.addEventListener('click', () => {
-            paramsToggle.classList.toggle('active');
-            paramsGrid.classList.toggle('visible');
+            const isVisible = paramsGrid.classList.toggle('visible');
+            paramsToggle.classList.toggle('active', isVisible);
         });
     </script>
 </body>

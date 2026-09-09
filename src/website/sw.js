@@ -1,4 +1,4 @@
-const CACHE_NAME = 'infinitedante-v5';
+const CACHE_NAME = 'infinitedante-v6';
 const ASSETS_TO_CACHE = [
   './index.html',
   './js/state.js',

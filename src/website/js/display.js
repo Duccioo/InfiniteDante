@@ -262,9 +262,12 @@ async function startGeneration() {
 
     isGenerating = true;
     const generationRunId = beginGenerationRun();
-    startBtn.disabled = true;
-    stopBtn.disabled = false;
-    statusEl.textContent = 'GENERATING...';
+    if (startBtn) {
+        startBtn.textContent = 'Pausa';
+        startBtn.classList.add('generating');
+    }
+    if (stopBtn) stopBtn.disabled = false;
+    statusEl.textContent = 'generazione in corso...';
     statusEl.classList.add('active');
 
     disableEditing();
@@ -328,7 +331,7 @@ async function startGeneration() {
         } catch (error) {
             if (!shouldHandleGenerationRunError(generationRunId)) break;
             console.error('Generation error:', error);
-            statusEl.textContent = 'ERROR: ' + error.message;
+            statusEl.textContent = 'errore: ' + error.message;
             stopGeneration();
             break;
         }
@@ -339,9 +342,13 @@ function stopGeneration() {
     isGenerating = false;
     invalidateGenerationRun();
     cancelPendingRhymeCompletion();
-    startBtn.disabled = false;
-    stopBtn.disabled = true;
-    statusEl.textContent = 'PAUSED — CLICK TEXT TO EDIT';
+    if (startBtn) {
+        startBtn.textContent = generatedText.trim().length > 0 ? 'Riprendi' : 'Avvia';
+        startBtn.classList.remove('generating');
+        startBtn.disabled = false;
+    }
+    if (stopBtn) stopBtn.disabled = true;
+    statusEl.textContent = 'in pausa';
     statusEl.classList.remove('active');
 
     enableEditing();
@@ -354,7 +361,11 @@ function clearText() {
     charsSinceLastCanto = 0;
     textOutput.textContent = '';
     textContainer.querySelectorAll('.canto-separator').forEach(el => el.remove());
-    statusEl.textContent = 'CLEARED — PRESS START';
+    if (startBtn) {
+        startBtn.textContent = 'Avvia';
+        startBtn.classList.remove('generating');
+    }
+    statusEl.textContent = 'pronto';
     disableEditing();
     resetDecoder(); // Clear pending UTF-8 bytes
     // Reset rhyme tracking
